@@ -1,10 +1,10 @@
-\name{anRpackage-package}
-\alias{anRpackage-package}
-\alias{anRpackage}
-\docType{package}
+\name{MaxDiff-package}
+\alias{MaxDiff-package}
+\alias{MaxDiff}
+\docType{MaxDiff}
 \title{
-What the package does (short line)
-~~ package title ~~
+Trade Off Design for Survey
+MaxDiff
 }
 \description{
 More about what it does (maybe more than one line)
