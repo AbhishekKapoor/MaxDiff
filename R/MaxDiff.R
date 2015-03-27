@@ -7,6 +7,8 @@ design <- function (attributes,sets,samplesize){
   lowerlimit<- 2* attributes/sets
   ideal<- 3* attributes/sets
   upperlimit<- 4* attributes/sets
-  des<- tradeoff.des (attributes,sets)
+  des<- tradeoff.des (attributes,sets,)
   
 }
+
+
