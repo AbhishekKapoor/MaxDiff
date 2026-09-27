@@ -16,6 +16,7 @@ from .analysis import (
 )
 from .excel_output import build_workbook
 from .sample_data import generate_sample_items, generate_responses
+from .input_parser import parse_study_setup, find_default_setup, load_items_csv
 
 __all__ = [
     "generate_design_from_attributes",
@@ -34,4 +35,7 @@ __all__ = [
     "build_workbook",
     "generate_sample_items",
     "generate_responses",
+    "parse_study_setup",
+    "find_default_setup",
+    "load_items_csv",
 ]

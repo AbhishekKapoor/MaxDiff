@@ -50,6 +50,39 @@ from maxdiff.analysis import (
 )
 from maxdiff.excel_output import build_workbook
 from maxdiff.sample_data import generate_responses
+from maxdiff.input_parser import parse_study_setup, find_default_setup
+
+_INIT_TEMPLATE = """\
+# ============================================================
+#  MaxDiff Study Configuration
+#  Fill in the sections below, then run:
+#    python main.py
+# ============================================================
+
+# --- Study settings -----------------------------------------
+STUDY_NAME    = My MaxDiff Study
+N_RESPONDENTS = 300
+
+# Optional overrides (auto-selected when left blank)
+# K_PER_TASK  = 5     # items shown per card (Sawtooth recommends 4–5)
+# N_TASKS     = 12    # cards per respondent
+# N_VERSIONS  = 2     # number of design versions
+# METHOD      = both  # counts | logit | both
+# OUTPUT      = output/MaxDiff_Results.xlsx
+
+# --- Attributes ---------------------------------------------
+# One attribute per line (no commas needed).
+# Lines starting with # are ignored.
+ATTRIBUTES:
+Attribute 1
+Attribute 2
+Attribute 3
+Attribute 4
+Attribute 5
+Attribute 6
+Attribute 7
+Attribute 8
+"""
 
 
 def parse_args():
@@ -57,25 +90,30 @@ def parse_args():
         description="MaxDiff Analysis — Sawtooth-style card design, scoring & Excel output"
     )
 
-    # --- Primary input: attributes + respondents ---
+    # --- Setup file (primary input) ---
+    p.add_argument("--setup", type=str, default=None,
+                   help="Path to study_setup.txt (default: input/study_setup.txt if found).")
+    p.add_argument("--init", action="store_true",
+                   help="Create a blank input/study_setup.txt template and exit.")
+
+    # --- Attribute overrides (alternative to setup file) ---
     p.add_argument("--attributes", type=str, default=None,
-                   help="Path to items CSV (columns: item_id, item_label). "
-                        "If omitted, uses built-in 15 smartphone features.")
+                   help="Path to items CSV (columns: item_id, item_label).")
     p.add_argument("--demo_attrs", type=str, default=None,
                    help="Comma-separated inline attribute list for quick demos.")
-    p.add_argument("--n_resp", type=int, default=300,
-                   help="Number of respondents (default: 300).")
+    p.add_argument("--n_resp", type=int, default=None,
+                   help="Number of respondents (overrides setup file; default: 300).")
 
     # --- Design overrides (optional — auto-selected when omitted) ---
     p.add_argument("--k_per_task", type=int, default=None,
                    help="Items per card (auto-selected if omitted; Sawtooth recommends 4–5).")
     p.add_argument("--n_tasks", type=int, default=None,
                    help="Cards per respondent (auto-selected if omitted).")
-    p.add_argument("--n_versions", type=int, default=2,
+    p.add_argument("--n_versions", type=int, default=None,
                    help="Number of design versions (default: 2).")
 
     # --- Analysis ---
-    p.add_argument("--method", type=str, default="both",
+    p.add_argument("--method", type=str, default=None,
                    choices=["counts", "logit", "both"],
                    help="Scoring method: counts | logit | both (default: both).")
 
@@ -84,12 +122,61 @@ def parse_args():
                    help="Use real survey data instead of simulation.")
 
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--output", type=str, default="output/MaxDiff_Results.xlsx")
+    p.add_argument("--output", type=str, default=None,
+                   help="Output Excel path (default: output/MaxDiff_Results.xlsx).")
     return p.parse_args()
 
 
+def _init_template():
+    """Write a blank study_setup.txt template and exit."""
+    os.makedirs("input", exist_ok=True)
+    dest = os.path.join("input", "study_setup.txt")
+    if os.path.exists(dest):
+        print(f"  {dest} already exists — not overwriting.")
+    else:
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(_INIT_TEMPLATE)
+        print(f"  Created {dest}")
+        print("  Edit it to add your study name, respondent count, and attributes.")
+        print("  Then run:  python main.py")
+    sys.exit(0)
+
+
+def _merge_setup_with_args(args):
+    """
+    Resolve final run parameters by merging setup file (if present) with
+    CLI overrides.  Returns a namespace-like object with the same attributes
+    as `args` plus any values loaded from the setup file.
+    """
+    # Determine setup file path
+    setup_path = args.setup or find_default_setup()
+
+    if setup_path and not args.attributes and not args.demo_attrs:
+        cfg = parse_study_setup(setup_path)
+        print(f"    Using setup file: {setup_path}")
+        # CLI flags take precedence over file settings
+        args.n_resp      = args.n_resp      or cfg["n_respondents"]
+        args.k_per_task  = args.k_per_task  or cfg["k_per_task"]
+        args.n_tasks     = args.n_tasks     or cfg["n_tasks"]
+        args.n_versions  = args.n_versions  or cfg["n_versions"]
+        args.method      = args.method      or cfg["method"]
+        args.output      = args.output      or cfg["output"]
+        args._items_df   = cfg["items_df"]
+    else:
+        args._items_df   = None
+        args.n_resp      = args.n_resp      or 300
+        args.n_versions  = args.n_versions  or 2
+        args.method      = args.method      or "both"
+        args.output      = args.output      or "output/MaxDiff_Results.xlsx"
+
+    return args
+
+
 def load_attributes(args) -> pd.DataFrame:
-    """Load attributes from file, inline string, or built-in sample."""
+    """Load attributes from setup file, CSV, inline string, or built-in sample."""
+    if getattr(args, "_items_df", None) is not None:
+        return args._items_df
+
     if args.demo_attrs:
         labels = [x.strip() for x in args.demo_attrs.split(",") if x.strip()]
         return pd.DataFrame({
@@ -175,6 +262,11 @@ def print_orthogonality_explanation(stats: Dict, n_resp: int) -> None:
 
 
 def run(args):
+    if args.init:
+        _init_template()
+
+    args = _merge_setup_with_args(args)
+
     os.makedirs("output", exist_ok=True)
     os.makedirs("data", exist_ok=True)
 

@@ -1,0 +1,36 @@
+# ============================================================
+#  MaxDiff Study Configuration
+#  Fill in the sections below, then run:
+#    python main.py
+# ============================================================
+
+# --- Study settings -----------------------------------------
+STUDY_NAME    = Smartphone Features Study
+N_RESPONDENTS = 300
+
+# Optional overrides (auto-selected when left blank)
+# K_PER_TASK  = 5     # items shown per card (Sawtooth recommends 4–5)
+# N_TASKS     = 12    # cards per respondent
+# N_VERSIONS  = 2     # number of design versions
+# METHOD      = both  # counts | logit | both
+# OUTPUT      = output/MaxDiff_Results.xlsx
+
+# --- Attributes ---------------------------------------------
+# One attribute per line (no commas needed).
+# Lines starting with # are ignored.
+ATTRIBUTES:
+Price / Value for money
+Battery life
+Camera quality
+Durability / Build quality
+Display quality
+Processing speed
+Water resistance
+5G / Connectivity
+Screen size
+Biometric security
+Storage capacity
+Operating system ecosystem
+Weight / Portability
+Design / Aesthetics
+Brand reputation
