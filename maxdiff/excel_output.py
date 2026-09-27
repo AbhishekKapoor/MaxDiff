@@ -238,7 +238,7 @@ def _write_design(ws, design_df, items_df, stats):
                 value=f"Min appearances/item = {stats['min_appearances']} | "
                       f"Max = {stats['max_appearances']} | "
                       f"Mean = {stats['mean_appearances']:.2f} | "
-                      f"Balance ratio = {stats['balance_ratio']:.3f}")
+                      f"Balance ratio = {stats.get('item_balance_ratio', stats.get('balance_ratio', 0)):.3f}")
         for col in range(1, k + 3):
             ws.cell(row=row, column=col).fill = _fill(COLOURS["light_grey"])
             ws.cell(row=row, column=col).font = _font(size=9, italic=True)
