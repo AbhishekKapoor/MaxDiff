@@ -1,0 +1,142 @@
+============================================================
+  HOW TO RUN MaxDiff Analysis Tool
+  Two-Phase Workflow: Design First → Survey → Analysis
+============================================================
+
+REQUIREMENTS
+------------
+  • Python 3.9 or later
+  • Install dependencies once:
+      pip install -r requirements.txt
+
+
+============================
+  PHASE 1 — BEFORE FIELDWORK
+  Generate the Card Design
+============================
+
+STEP 1: Set up your study inputs
+---------------------------------
+  Open  input\study_setup.txt  in any text editor (Notepad, VS Code, etc.)
+
+  Fill in:
+    STUDY_NAME    = Your Study Name
+    N_RESPONDENTS = 300           ← how many respondents you plan to survey
+
+  Under ATTRIBUTES: — list every feature/attribute to test, one per line:
+    ATTRIBUTES:
+    Price / Value for money
+    Battery life
+    Camera quality
+    ... (add as many as needed)
+
+  Save and close the file.
+
+
+STEP 2: Generate the card design
+----------------------------------
+  Run this command in your terminal / Command Prompt:
+
+      python main.py --design_only
+
+  Output files created in  data\  folder:
+    • design_output.csv  — the full card layout (which items appear on each card)
+    • items.csv          — your attribute list with IDs
+
+  The terminal also prints:
+    • How many cards each respondent sees
+    • Whether the design is fully orthogonal (BIBD) or near-orthogonal
+    • Pair co-occurrence statistics
+
+
+STEP 3: Program your survey
+-----------------------------
+  Use  data\design_output.csv  to set up the survey in your survey tool
+  (Qualtrics, SurveyMonkey, SurveySparrow, etc.).
+
+  The CSV has these columns:
+    version      — design version number (use to assign respondents)
+    task         — card number (1, 2, 3 ...)
+    item_1 ... item_k — the attribute labels shown on each card
+
+  For each card, the respondent picks:
+    BEST  — the feature most important to them
+    WORST — the feature least important to them
+
+
+STEP 4: Collect responses
+--------------------------
+  Run fieldwork as normal.
+
+  Export responses from your survey tool as a CSV with these columns:
+
+    respondent_id   — unique ID for each respondent  (e.g. R001, R002 ...)
+    version         — which design version they received
+    task            — which card number they answered
+    best_item       — item_label of what they picked as BEST
+    worst_item      — item_label of what they picked as WORST
+
+  Optional: add demographic columns (gender, age_group, region, etc.)
+  — these become cut variables automatically.
+
+  Save the file as:  data\responses.csv
+
+
+=================================
+  PHASE 2 — AFTER FIELDWORK
+  Run the Analysis
+=================================
+
+STEP 5: Run the analysis with real responses
+---------------------------------------------
+  Run this command:
+
+      python main.py --real_data data\responses.csv data\items.csv
+
+  This will:
+    • Score all respondents using Counting AND Aggregate Logit methods
+    • Break results by every demographic column in your responses CSV
+    • Build a full Excel workbook
+
+
+STEP 6: Open the Excel output
+-------------------------------
+  File is saved to:  output\MaxDiff_Results.xlsx
+
+  Sheets inside the workbook:
+    HOW_IT_WORKS      — Methodology and design explanation
+    Design            — Card layout matrix
+    Raw_Data          — All survey responses
+    Importance_Total  — Overall importance scores + bar chart
+    Importance_Cuts   — Heat-map of scores by demographic cuts
+    Simulator         — Interactive subgroup comparator
+                         (open the Simulator sheet, click cell C5,
+                          pick a subgroup from the dropdown)
+
+
+============================================================
+  QUICK REFERENCE — ALL COMMANDS
+============================================================
+
+  Generate a blank input template:
+      python main.py --init
+
+  Phase 1 — design only (before fieldwork):
+      python main.py --design_only
+
+  Phase 2 — analysis with real data (after fieldwork):
+      python main.py --real_data data\responses.csv data\items.csv
+
+  Full run with simulated data (for testing/demo):
+      python main.py
+
+  Use a custom setup file:
+      python main.py --setup path\to\my_study.txt --design_only
+
+  Logit scoring only:
+      python main.py --real_data data\responses.csv data\items.csv --method logit
+
+  Quick demo with inline attributes:
+      python main.py --demo_attrs "Price,Battery,Camera,Storage,Display" --n_resp 100
+
+============================================================

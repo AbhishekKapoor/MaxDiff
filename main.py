@@ -116,6 +116,9 @@ def parse_args():
     p.add_argument("--method", type=str, default=None,
                    choices=["counts", "logit", "both"],
                    help="Scoring method: counts | logit | both (default: both).")
+    p.add_argument("--design_only", action="store_true",
+                   help="Generate and export the card design only — skip scoring. "
+                        "Use this BEFORE fieldwork to get the survey card layout.")
 
     # --- Real data mode ---
     p.add_argument("--real_data", nargs=2, metavar=("RESPONSES_CSV", "ITEMS_CSV"),
@@ -308,6 +311,17 @@ def run(args):
     )
     print_design_summary(stats)
     print_orthogonality_explanation(stats, args.n_resp)
+
+    # ── Design-only exit ─────────────────────────────────────────────────
+    if args.design_only:
+        design_df.to_csv("data/design_output.csv", index=False)
+        items_df.to_csv("data/items.csv", index=False)
+        print("  Design files saved to data/")
+        print("  → Use data/design_output.csv to program your survey.")
+        print("  → When fieldwork is complete, run:")
+        print("      python main.py --real_data data/responses.csv data/items.csv")
+        print("=" * 65 + "\n")
+        return
 
     # ── Step 4: Survey responses ─────────────────────────────────────────
     if args.real_data:
