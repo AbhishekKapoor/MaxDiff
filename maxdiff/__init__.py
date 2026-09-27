@@ -1,0 +1,21 @@
+"""MaxDiff Analysis Package — replicates Sawtooth Software MaxDiff."""
+
+from .design import generate_design, check_feasibility, design_to_survey_cards, print_design_summary
+from .analysis import score_counts, score_logit, score_all_cuts, build_importance_matrix, compute_summary_stats
+from .excel_output import build_workbook
+from .sample_data import generate_sample_items, generate_responses
+
+__all__ = [
+    "generate_design",
+    "check_feasibility",
+    "design_to_survey_cards",
+    "print_design_summary",
+    "score_counts",
+    "score_logit",
+    "score_all_cuts",
+    "build_importance_matrix",
+    "compute_summary_stats",
+    "build_workbook",
+    "generate_sample_items",
+    "generate_responses",
+]
