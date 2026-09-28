@@ -148,6 +148,18 @@ input[type=radio] { accent-color: #2e6da4; }
 .design-warning { background: #fffbeb; border: 1px solid #f6ad55; border-radius: 6px;
   padding: 10px 14px; margin: 4px 0; font-size: 13px; color: #7b341e; line-height: 1.5; }
 
+/* ── Task guide table ── */
+.tg-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+.tg-table th { background: #f7fafc; text-align: left; padding: 8px 12px;
+  border-bottom: 2px solid #e2e8f0; color: #4a5568; font-weight: 600; }
+.tg-table td { padding: 9px 12px; border-bottom: 1px solid #edf2f7; color: #2d3748; }
+.tg-table tr.tg-current td { background: #ebf8ff; font-weight: 600; }
+.tg-you { font-size: 11px; font-weight: 400; color: #2b6cb0; margin-left: 4px; }
+.tg-bad       { color: #c53030; }
+.tg-ok        { color: #276749; }
+.tg-good      { color: #276749; }
+.tg-excellent { color: #276749; }
+
 /* ── HB settings ── */
 .hb-settings { background: #ebf3fb; border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
 .hb-settings .form-row { grid-template-columns: repeat(3, 1fr); }
@@ -253,7 +265,13 @@ Warranty &amp; after-sales service</textarea>
         <div id="d-badge" style="margin:8px 0 14px;"></div>
         <div id="d-warnings" class="hidden"></div>
 
-        <h3>Download Files</h3>
+        <h3 style="margin-top:18px;">Task Count Guide</h3>
+        <p style="font-size:12px;color:#718096;margin-bottom:8px;">
+          Based on your <span id="d-guide-params"></span>. Your current selection is highlighted.
+        </p>
+        <div id="d-task-guide"></div>
+
+        <h3 style="margin-top:20px;">Download Files</h3>
         <p style="font-size:12px;color:#718096;margin-bottom:10px;">
           Use <strong>design_output.csv</strong> to program your survey in Qualtrics / SurveyMonkey.
           Upload <strong>items.csv</strong> with your real responses in Phase 2.
@@ -527,6 +545,9 @@ async function generateDesign() {
       warnEl.classList.add('hidden');
     }
 
+    // Task count guide table
+    buildTaskGuide(data.n_items, data.k_per_task, data.n_tasks);
+
     document.getElementById('d-result').classList.remove('hidden');
   } catch (err) {
     const el = document.getElementById('d-error');
@@ -535,6 +556,50 @@ async function generateDesign() {
   } finally {
     btn.disabled = false; spin.classList.add('hidden');
   }
+}
+
+function buildTaskGuide(nItems, kPerTask, currentTasks) {
+  document.getElementById('d-guide-params').textContent =
+    `${nItems} attributes, ${kPerTask} items per card`;
+
+  function taskQuality(app) {
+    if (app < 2)  return { icon: '❌', label: 'Below minimum',           cls: 'tg-bad' };
+    if (app < 3)  return { icon: '❌', label: 'Below minimum',           cls: 'tg-bad' };
+    if (app < 4)  return { icon: '✅', label: 'Minimum acceptable',       cls: 'tg-ok' };
+    if (app < 5)  return { icon: '✅', label: 'Good (Sawtooth recommends)', cls: 'tg-good' };
+    return        { icon: '✅', label: 'Excellent',                       cls: 'tg-excellent' };
+  }
+
+  // Build rows: t that yields 2×, 3×, 4×, 5× appearances (ceiling)
+  const baseRows = [2, 3, 4, 5].map(app => ({
+    tasks:       Math.ceil(app * nItems / kPerTask),
+    appearances: (Math.ceil(app * nItems / kPerTask) * kPerTask / nItems).toFixed(1),
+  }));
+
+  // Insert current tasks row if not already covered
+  const covered = baseRows.map(r => r.tasks);
+  const allRows = covered.includes(currentTasks)
+    ? baseRows
+    : [{ tasks: currentTasks,
+         appearances: (currentTasks * kPerTask / nItems).toFixed(1) },
+       ...baseRows].sort((a, b) => a.tasks - b.tasks);
+
+  const rows = allRows.map(r => {
+    const app   = parseFloat(r.appearances);
+    const q     = taskQuality(app);
+    const isCur = r.tasks === currentTasks;
+    return `<tr class="${isCur ? 'tg-current' : ''}">
+      <td>${r.tasks}${isCur ? ' <span class="tg-you">← your design</span>' : ''}</td>
+      <td>${app < 3 ? r.appearances : '<strong>' + r.appearances + '</strong>'}</td>
+      <td><span class="${q.cls}">${q.icon} ${q.label}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('d-task-guide').innerHTML = `
+    <table class="tg-table">
+      <thead><tr><th>Tasks</th><th>Appearances per item</th><th>Quality</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 function clearDesign() {
