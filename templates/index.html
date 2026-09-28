@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MaxDiff Analysis Tool</title>
+<style>
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: #f0f4f8; color: #1a202c; font-size: 14px; }
+
+/* ── Layout ── */
+header { background: linear-gradient(135deg, #1a3a6b 0%, #2e6da4 100%);
+         color: #fff; padding: 18px 32px; display: flex; align-items: center; gap: 14px; }
+header svg { flex-shrink: 0; }
+header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+header p  { font-size: 12px; opacity: .75; margin-top: 2px; }
+
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+.tab-btn { padding: 10px 22px; border: none; border-radius: 8px 8px 0 0; cursor: pointer;
+           font-size: 13px; font-weight: 600; background: #d1dce8; color: #4a5568;
+           transition: all .15s; }
+.tab-btn.active { background: #fff; color: #1a3a6b; box-shadow: 0 -2px 0 #2e6da4 inset; }
+.tab-btn:hover:not(.active) { background: #bfcfdf; }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Cards ── */
+.card { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 20px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.card h2 { font-size: 15px; font-weight: 700; color: #1a3a6b; margin-bottom: 16px;
+           padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; display: flex;
+           align-items: center; gap: 8px; }
+.card h3 { font-size: 13px; font-weight: 600; color: #2d3748; margin: 16px 0 8px; }
+
+/* ── Form controls ── */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row.three { grid-template-columns: 2fr 1fr 1fr; }
+@media (max-width: 640px) { .form-row, .form-row.three { grid-template-columns: 1fr; } }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+label  { font-size: 12px; font-weight: 600; color: #4a5568; }
+input[type=text], input[type=number], select, textarea {
+  border: 1.5px solid #cbd5e0; border-radius: 6px; padding: 8px 10px;
+  font-size: 13px; font-family: inherit; color: #2d3748; background: #fafafa;
+  transition: border-color .15s; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #2e6da4;
+  background: #fff; box-shadow: 0 0 0 3px rgba(46,109,164,.12); }
+textarea { resize: vertical; min-height: 140px; }
+.hint { font-size: 11px; color: #718096; margin-top: 2px; }
+
+/* ── Buttons ── */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px;
+       border: none; border-radius: 7px; cursor: pointer; font-size: 13px;
+       font-weight: 600; transition: all .15s; text-decoration: none; }
+.btn-primary  { background: #2e6da4; color: #fff; }
+.btn-primary:hover  { background: #1f5585; }
+.btn-success  { background: #27ae60; color: #fff; }
+.btn-success:hover  { background: #1e8449; }
+.btn-outline  { background: #fff; color: #2e6da4; border: 1.5px solid #2e6da4; }
+.btn-outline:hover  { background: #ebf3fb; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn[disabled] { opacity: .45; cursor: default; pointer-events: none; }
+
+.btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+/* ── Summary pills ── */
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                gap: 10px; margin: 14px 0; }
+.stat-pill { background: #ebf3fb; border-radius: 8px; padding: 10px 14px; }
+.stat-pill .val { font-size: 22px; font-weight: 700; color: #1a3a6b; }
+.stat-pill .lbl { font-size: 11px; color: #718096; margin-top: 2px; }
+.badge { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11px;
+         font-weight: 600; }
+.badge-green  { background: #c6f6d5; color: #276749; }
+.badge-yellow { background: #fefcbf; color: #744210; }
+.badge-blue   { background: #bee3f8; color: #2c5282; }
+
+/* ── File upload area ── */
+.upload-zone { border: 2px dashed #cbd5e0; border-radius: 8px; padding: 16px 20px;
+               background: #fafafa; text-align: center; cursor: pointer;
+               transition: all .15s; position: relative; }
+.upload-zone:hover, .upload-zone.over { border-color: #2e6da4; background: #ebf3fb; }
+.upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.upload-zone .icon { font-size: 24px; margin-bottom: 4px; }
+.upload-zone .name { font-size: 12px; color: #4a5568; margin-top: 4px; font-weight: 600; }
+.upload-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 700px) { .upload-row { grid-template-columns: 1fr; } }
+
+/* ── Progress / alerts ── */
+.alert { padding: 10px 14px; border-radius: 7px; font-size: 13px; margin-bottom: 14px; }
+.alert-info  { background: #ebf8ff; color: #2b6cb0; border-left: 3px solid #3182ce; }
+.alert-error { background: #fff5f5; color: #c53030; border-left: 3px solid #e53e3e; }
+.alert-ok    { background: #f0fff4; color: #276749; border-left: 3px solid #38a169; }
+
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2.5px solid #bee3f8;
+           border-top-color: #2e6da4; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Chart: horizontal bars ── */
+.chart-wrap { overflow-x: auto; }
+.bar-chart { width: 100%; }
+.bar-row { display: flex; align-items: center; margin-bottom: 6px; gap: 8px; }
+.bar-label { width: 220px; min-width: 120px; font-size: 12px; text-align: right;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2d3748; }
+.bar-track { flex: 1; background: #e2e8f0; border-radius: 4px; height: 22px; overflow: hidden; }
+.bar-fill  { height: 100%; background: linear-gradient(90deg, #2e6da4, #4299e1);
+             border-radius: 4px; transition: width .4s ease; }
+.bar-val   { width: 42px; font-size: 12px; font-weight: 700; color: #1a3a6b; }
+.bar-rank  { width: 22px; font-size: 11px; color: #a0aec0; }
+
+/* ── Simulator ── */
+.sim-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.sim-header label { font-weight: 600; font-size: 12px; color: #4a5568; white-space: nowrap; }
+.sim-header select { min-width: 200px; }
+
+/* ── Heatmap ── */
+.heatmap-wrap { overflow-x: auto; margin-top: 10px; }
+table.heatmap { border-collapse: collapse; font-size: 11.5px; min-width: 400px; width: 100%; }
+table.heatmap th { background: #1a3a6b; color: #fff; padding: 7px 8px; text-align: center;
+                   white-space: nowrap; font-weight: 600; position: sticky; top: 0; z-index: 2; }
+table.heatmap th.item-col { text-align: left; min-width: 180px; position: sticky; left: 0; z-index: 3; }
+table.heatmap td { padding: 5px 8px; text-align: center; border-bottom: 1px solid #e2e8f0; }
+table.heatmap td.item-name { text-align: left; font-weight: 600; color: #2d3748;
+                              background: #f7fafc; position: sticky; left: 0; z-index: 1; }
+table.heatmap tr:hover td { opacity: .88; }
+
+/* ── Method toggle ── */
+.toggle-row { display: flex; align-items: center; gap: 8px; }
+.toggle-row span { font-size: 12px; color: #718096; }
+input[type=radio] { accent-color: #2e6da4; }
+
+/* ── Hidden ── */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+    <rect width="36" height="36" rx="8" fill="rgba(255,255,255,0.15)"/>
+    <rect x="7" y="24" width="5" height="6" rx="1" fill="#fff"/>
+    <rect x="13" y="18" width="5" height="12" rx="1" fill="#bee3f8"/>
+    <rect x="19" y="12" width="5" height="18" rx="1" fill="#90cdf4"/>
+    <rect x="25" y="6"  width="5" height="24" rx="1" fill="#ebf8ff"/>
+  </svg>
+  <div>
+    <h1>MaxDiff Analysis Tool</h1>
+    <p>Best-Worst Scaling · Replicates Sawtooth Software</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Tab navigation -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('design')">⬡ Design Generator</button>
+    <button class="tab-btn"        onclick="switchTab('analysis')">◎ Analysis &amp; Simulator</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!--  TAB 1 — DESIGN                                       -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div id="tab-design" class="tab-panel active">
+
+    <div class="card">
+      <h2>📋 Study Setup</h2>
+
+      <div class="form-row three">
+        <div class="field">
+          <label>Study Name</label>
+          <input type="text" id="d-study-name" value="Smartphone Features Study" placeholder="e.g. Brand Perception Study">
+        </div>
+        <div class="field">
+          <label>Respondents (planned)</label>
+          <input type="number" id="d-n-resp" value="300" min="10" max="10000">
+        </div>
+        <div class="field">
+          <label>Items per card <span class="hint">(auto)</span></label>
+          <input type="number" id="d-k" placeholder="4 or 5" min="3" max="8">
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:14px">
+        <label>Attributes — one per line</label>
+        <textarea id="d-attrs" rows="12" placeholder="Price / Value for money&#10;Battery life&#10;Camera quality&#10;Storage capacity&#10;Display quality&#10;...">Price / Value for money
+Battery life
+Camera quality
+Storage capacity
+Display quality / Screen size
+Software updates &amp; support
+Brand reputation
+Build quality / Durability
+5G connectivity
+Charging speed
+Water resistance
+AI / Smart features
+Headphone jack / Audio quality
+Expandable storage
+Warranty &amp; after-sales service</textarea>
+        <span class="hint">Lines starting with # are ignored. Minimum 4 attributes required.</span>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="generateDesign()">
+          <span id="d-spin" class="spinner hidden"></span>
+          ⬡ Generate Design
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="clearDesign()">Clear</button>
+      </div>
+    </div>
+
+    <div id="d-result" class="hidden">
+      <div class="card">
+        <h2>✅ Design Generated</h2>
+        <div id="d-summary" class="summary-grid"></div>
+        <div id="d-badge" style="margin:8px 0 14px;"></div>
+
+        <h3>Download Files</h3>
+        <p style="font-size:12px;color:#718096;margin-bottom:10px;">
+          Use <strong>design_output.csv</strong> to program your survey in Qualtrics / SurveyMonkey.
+          Upload <strong>items.csv</strong> with your real responses in Phase 2.
+        </p>
+        <div class="btn-group">
+          <a class="btn btn-success" href="/download/design" download>⬇ design_output.csv</a>
+          <a class="btn btn-outline" href="/download/items"  download>⬇ items.csv</a>
+        </div>
+
+        <h3 style="margin-top:20px;">Survey Column Guide</h3>
+        <p style="font-size:12px;color:#4a5568;line-height:1.7;">
+          For each card, collect from respondents:<br>
+          <code>respondent_id</code> · <code>version</code> · <code>task</code> ·
+          <code>best_item</code> · <code>worst_item</code><br>
+          Optional: add demographic columns (gender, age_group, region …) — they become cut variables automatically.
+        </p>
+      </div>
+    </div>
+
+    <div id="d-error" class="alert alert-error hidden"></div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!--  TAB 2 — ANALYSIS & SIMULATOR                         -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div id="tab-analysis" class="tab-panel">
+
+    <div class="card">
+      <h2>📤 Upload Survey Data</h2>
+
+      <div class="upload-row">
+        <div>
+          <p style="font-size:12px;font-weight:600;margin-bottom:6px;">responses.csv <span style="color:#e53e3e">*</span></p>
+          <div class="upload-zone" id="zone-resp">
+            <div class="icon">📄</div>
+            <div style="font-size:12px;color:#718096;">Click or drag</div>
+            <div class="name" id="resp-name">No file chosen</div>
+            <input type="file" accept=".csv" onchange="fileChosen(this,'resp-name')">
+          </div>
+          <p class="hint" style="margin-top:4px;">Cols: respondent_id, version, task, best_item, worst_item [+ demographics]</p>
+        </div>
+        <div>
+          <p style="font-size:12px;font-weight:600;margin-bottom:6px;">items.csv <span style="color:#718096">(or use last design)</span></p>
+          <div class="upload-zone" id="zone-items">
+            <div class="icon">🏷️</div>
+            <div style="font-size:12px;color:#718096;">Click or drag</div>
+            <div class="name" id="items-name">No file chosen</div>
+            <input type="file" accept=".csv" onchange="fileChosen(this,'items-name')">
+          </div>
+          <p class="hint" style="margin-top:4px;">Cols: item_id, item_label</p>
+        </div>
+        <div>
+          <p style="font-size:12px;font-weight:600;margin-bottom:6px;">design_output.csv <span style="color:#718096">(or use last design)</span></p>
+          <div class="upload-zone" id="zone-design">
+            <div class="icon">⬡</div>
+            <div style="font-size:12px;color:#718096;">Click or drag</div>
+            <div class="name" id="design-name">No file chosen</div>
+            <input type="file" accept=".csv" onchange="fileChosen(this,'design-name')">
+          </div>
+          <p class="hint" style="margin-top:4px;">Generated in Design tab (Phase 1)</p>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+        <div class="field">
+          <label>Study Name</label>
+          <input type="text" id="a-study-name" value="MaxDiff Study" style="width:220px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;">Scoring Method</label>
+          <div class="toggle-row">
+            <input type="radio" name="method" id="m-counts" value="counts" checked>
+            <label for="m-counts" style="font-weight:400;">Counting</label>
+            <input type="radio" name="method" id="m-logit"  value="logit">
+            <label for="m-logit"  style="font-weight:400;">Aggregate Logit</label>
+          </div>
+          <span class="hint">Counting = fast; Logit = matches Sawtooth more closely</span>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="runAnalysis()">
+          <span id="a-spin" class="spinner hidden"></span>
+          ◎ Run Analysis
+        </button>
+      </div>
+      <div id="a-error" class="alert alert-error hidden"></div>
+    </div>
+
+    <!-- Results (hidden until analysis runs) -->
+    <div id="a-results" class="hidden">
+
+      <!-- Stats + downloads -->
+      <div class="card">
+        <h2>📊 Results</h2>
+        <div id="a-summary" class="summary-grid"></div>
+        <div class="btn-group" style="margin-top:16px;">
+          <a class="btn btn-success" href="/download/importance" download>
+            ⬇ Importance by Respondent (.csv)
+          </a>
+          <a class="btn btn-outline" href="/download/excel" download>
+            ⬇ Full Excel Workbook (.xlsx)
+          </a>
+        </div>
+      </div>
+
+      <!-- Overall importance chart -->
+      <div class="card">
+        <h2>📈 Overall Importance (Total Sample)</h2>
+        <div class="chart-wrap">
+          <div id="total-chart" class="bar-chart"></div>
+        </div>
+      </div>
+
+      <!-- Simulator by cut -->
+      <div class="card" id="sim-card">
+        <h2>🔍 Simulator — Compare by Subgroup</h2>
+        <div class="sim-header">
+          <label for="cut-select">Select Subgroup:</label>
+          <select id="cut-select" onchange="renderSimulator()">
+            <option value="Total">Total Sample</option>
+          </select>
+          <span id="cut-n" style="font-size:12px;color:#718096;"></span>
+        </div>
+        <div class="chart-wrap">
+          <div id="sim-chart" class="bar-chart"></div>
+        </div>
+      </div>
+
+      <!-- Cuts heatmap -->
+      <div class="card" id="heatmap-card">
+        <h2>🌡 Importance Heatmap — All Cuts</h2>
+        <p style="font-size:12px;color:#718096;margin-bottom:10px;">
+          Colour intensity = relative importance (dark blue = highest within each column).
+        </p>
+        <div class="heatmap-wrap">
+          <table class="heatmap" id="heatmap-table"></table>
+        </div>
+      </div>
+
+    </div><!-- #a-results -->
+  </div><!-- tab-analysis -->
+
+</div><!-- .container -->
+
+<script>
+/* ── State ── */
+let _scores   = [];   // [{item_id, label, importance, rank}, ...]
+let _cuts     = [];   // ['Total', 'gender_Male', ...]
+let _cutsData = {};   // {label: {Total:80, gender_Male:75, ...}}
+let _nByCut   = {};   // {Total:300, gender_Male:150, ...}
+
+/* ── Tab switching ── */
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) =>
+    b.classList.toggle('active', ['design','analysis'][i] === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+/* ── File chosen helper ── */
+function fileChosen(inp, nameId) {
+  const el = document.getElementById(nameId);
+  el.textContent = inp.files[0] ? inp.files[0].name : 'No file chosen';
+  el.style.color = inp.files[0] ? '#276749' : '#4a5568';
+}
+
+/* ── Download data-URI helper ── */
+function downloadText(text, filename) {
+  const a  = document.createElement('a');
+  const bl = new Blob([text], { type: 'text/csv' });
+  a.href   = URL.createObjectURL(bl);
+  a.download = filename;
+  a.click();
+}
+
+/* ════════════════════════════════════════════════
+   DESIGN TAB
+════════════════════════════════════════════════ */
+async function generateDesign() {
+  const btn = document.querySelector('#tab-design .btn-primary');
+  const spin = document.getElementById('d-spin');
+  btn.disabled = true; spin.classList.remove('hidden');
+  document.getElementById('d-result').classList.add('hidden');
+  document.getElementById('d-error').classList.add('hidden');
+
+  const payload = {
+    study_name:   document.getElementById('d-study-name').value,
+    n_respondents: +document.getElementById('d-n-resp').value,
+    attributes:   document.getElementById('d-attrs').value,
+    k_per_task:   document.getElementById('d-k').value || null,
+  };
+
+  try {
+    const res  = await fetch('/api/design', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    // Summary pills
+    const summaryEl = document.getElementById('d-summary');
+    summaryEl.innerHTML = `
+      <div class="stat-pill"><div class="val">${data.n_items}</div><div class="lbl">Attributes</div></div>
+      <div class="stat-pill"><div class="val">${data.k_per_task}</div><div class="lbl">Items / Card</div></div>
+      <div class="stat-pill"><div class="val">${data.n_tasks}</div><div class="lbl">Cards / Respondent</div></div>
+      <div class="stat-pill"><div class="val">${data.n_versions}</div><div class="lbl">Versions</div></div>
+      <div class="stat-pill"><div class="val">${data.mean_appearances}×</div><div class="lbl">Appearances / Item</div></div>
+    `;
+
+    const isOrth = data.is_orthogonal;
+    document.getElementById('d-badge').innerHTML = `
+      <span class="badge ${isOrth ? 'badge-green' : 'badge-yellow'}">
+        ${isOrth ? '✓ Fully Orthogonal (BIBD)' : '≈ Near-Orthogonal · Pair CV ' + data.pair_cv}
+      </span>
+      <span class="badge badge-blue" style="margin-left:6px;">${data.design_type}</span>
+    `;
+
+    document.getElementById('d-result').classList.remove('hidden');
+  } catch (err) {
+    const el = document.getElementById('d-error');
+    el.textContent = '⚠ ' + err.message;
+    el.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; spin.classList.add('hidden');
+  }
+}
+
+function clearDesign() {
+  document.getElementById('d-attrs').value = '';
+  document.getElementById('d-result').classList.add('hidden');
+  document.getElementById('d-error').classList.add('hidden');
+}
+
+/* ════════════════════════════════════════════════
+   ANALYSIS TAB
+════════════════════════════════════════════════ */
+async function runAnalysis() {
+  const btn  = document.querySelector('#tab-analysis .btn-primary');
+  const spin = document.getElementById('a-spin');
+  btn.disabled = true; spin.classList.remove('hidden');
+  document.getElementById('a-results').classList.add('hidden');
+  document.getElementById('a-error').classList.add('hidden');
+
+  const respFile   = document.querySelector('#zone-resp input[type=file]').files[0];
+  const itemsFile  = document.querySelector('#zone-items input[type=file]').files[0];
+  const designFile = document.querySelector('#zone-design input[type=file]').files[0];
+
+  if (!respFile) {
+    showAError('Please upload responses.csv first.');
+    btn.disabled = false; spin.classList.add('hidden');
+    return;
+  }
+
+  const method = document.querySelector('input[name=method]:checked').value;
+  const fd = new FormData();
+  fd.append('responses', respFile);
+  if (itemsFile)  fd.append('items',  itemsFile);
+  if (designFile) fd.append('design', designFile);
+  fd.append('method',     method);
+  fd.append('study_name', document.getElementById('a-study-name').value);
+
+  try {
+    const res  = await fetch('/api/analysis', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    _scores   = data.scores;
+    _cuts     = ['Total', ...data.cuts];
+    _cutsData = data.cuts_data;
+    _nByCut   = data.n_by_cut || {};
+
+    // Summary
+    const mLabel = data.method === 'logit' ? 'Aggregate Logit' : 'Counting';
+    document.getElementById('a-summary').innerHTML = `
+      <div class="stat-pill"><div class="val">${data.n_respondents}</div><div class="lbl">Respondents</div></div>
+      <div class="stat-pill"><div class="val">${data.n_items}</div><div class="lbl">Attributes</div></div>
+      <div class="stat-pill"><div class="val">${data.cuts.length}</div><div class="lbl">Demographic Cuts</div></div>
+      <div class="stat-pill"><div class="val">${mLabel}</div><div class="lbl">Method</div></div>
+    `;
+
+    // Simulator dropdown
+    const sel = document.getElementById('cut-select');
+    sel.innerHTML = '<option value="Total">Total Sample</option>';
+    data.cuts.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = _humanCut(c);
+      sel.appendChild(opt);
+    });
+    if (data.cuts.length === 0) {
+      document.getElementById('sim-card').classList.add('hidden');
+    } else {
+      document.getElementById('sim-card').classList.remove('hidden');
+    }
+
+    renderTotalChart();
+    renderSimulator();
+    renderHeatmap();
+
+    document.getElementById('a-results').classList.remove('hidden');
+  } catch (err) {
+    showAError('⚠ ' + err.message);
+  } finally {
+    btn.disabled = false; spin.classList.add('hidden');
+  }
+}
+
+function showAError(msg) {
+  const el = document.getElementById('a-error');
+  el.textContent = msg; el.classList.remove('hidden');
+}
+
+/* ── Chart rendering ── */
+function _humanCut(cut) {
+  if (cut === 'Total') return 'Total Sample';
+  const i = cut.lastIndexOf('_');
+  return i > 0 ? cut.slice(0, i).replace(/_/g,' ') + ': ' + cut.slice(i+1) : cut;
+}
+
+function _barHTML(items) {
+  return items.map(it => `
+    <div class="bar-row">
+      <div class="bar-rank">#${it.rank}</div>
+      <div class="bar-label" title="${it.label}">${it.label}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${it.importance}%"></div>
+      </div>
+      <div class="bar-val">${it.importance.toFixed(1)}</div>
+    </div>`).join('');
+}
+
+function renderTotalChart() {
+  const sorted = [..._scores].sort((a,b) => b.importance - a.importance);
+  document.getElementById('total-chart').innerHTML = _barHTML(sorted);
+}
+
+function renderSimulator() {
+  const cut  = document.getElementById('cut-select').value;
+  const n    = _nByCut[cut] || _nByCut['Total'] || '';
+  document.getElementById('cut-n').textContent = n ? `n = ${n}` : '';
+
+  let items;
+  if (cut === 'Total') {
+    items = [..._scores].sort((a,b) => b.importance - a.importance);
+  } else {
+    items = _scores.map(s => ({
+      ...s,
+      importance: (_cutsData[s.label] || {})[cut] ?? 0,
+    })).sort((a,b) => b.importance - a.importance)
+      .map((s,i) => ({ ...s, rank: i+1 }));
+  }
+  document.getElementById('sim-chart').innerHTML = _barHTML(items);
+}
+
+function renderHeatmap() {
+  const allCuts = _cuts;  // ['Total', 'gender_Male', ...]
+  if (allCuts.length <= 1) {
+    document.getElementById('heatmap-card').classList.add('hidden');
+    return;
+  }
+  document.getElementById('heatmap-card').classList.remove('hidden');
+
+  // Build min/max per cut for colour scaling
+  const colMin = {}, colMax = {};
+  allCuts.forEach(cut => {
+    const vals = _scores.map(s => {
+      if (cut === 'Total') return s.importance;
+      return (_cutsData[s.label] || {})[cut] ?? null;
+    }).filter(v => v !== null);
+    colMin[cut] = Math.min(...vals);
+    colMax[cut] = Math.max(...vals);
+  });
+
+  // Sort items by Total importance
+  const sorted = [..._scores].sort((a,b) => b.importance - a.importance);
+
+  const thead = `<thead><tr>
+    <th class="item-col">Attribute</th>
+    ${allCuts.map(c => `<th>${_humanCut(c).replace(/:/,'<br>')}</th>`).join('')}
+  </tr></thead>`;
+
+  const tbody = sorted.map(s => {
+    const cells = allCuts.map(cut => {
+      const val = cut === 'Total' ? s.importance : ((_cutsData[s.label] || {})[cut] ?? null);
+      if (val === null) return '<td>—</td>';
+      const mn = colMin[cut], mx = colMax[cut];
+      const t  = mx > mn ? (val - mn) / (mx - mn) : 0.5;
+      const bg = _heatColor(t);
+      const fg = t > 0.6 ? '#fff' : '#1a3a6b';
+      return `<td style="background:${bg};color:${fg};font-weight:${t>0.7?'700':'400'}">${val.toFixed(1)}</td>`;
+    }).join('');
+    return `<tr><td class="item-name">${s.label}</td>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('heatmap-table').innerHTML = thead + '<tbody>' + tbody + '</tbody>';
+}
+
+function _heatColor(t) {
+  // Interpolate white → mid-blue → dark navy
+  if (t < 0.5) {
+    const u = t * 2;
+    const r = Math.round(235 + (46  - 235) * u);
+    const g = Math.round(242 + (109 - 242) * u);
+    const b = Math.round(251 + (164 - 251) * u);
+    return `rgb(${r},${g},${b})`;
+  } else {
+    const u = (t - 0.5) * 2;
+    const r = Math.round(46  + (26  - 46)  * u);
+    const g = Math.round(109 + (58  - 109) * u);
+    const b = Math.round(164 + (107 - 164) * u);
+    return `rgb(${r},${g},${b})`;
+  }
+}
+
+/* ── Drag-and-drop for upload zones ── */
+document.querySelectorAll('.upload-zone').forEach(zone => {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    const inp = zone.querySelector('input[type=file]');
+    const nameId = inp.onchange.toString().match(/'([^']+)'/)?.[1];
+    if (e.dataTransfer.files[0]) {
+      inp.files = e.dataTransfer.files;
+      const nameEl = zone.querySelector('.name');
+      nameEl.textContent = e.dataTransfer.files[0].name;
+      nameEl.style.color = '#276749';
+    }
+  });
+});
+</script>
+</body>
+</html>
