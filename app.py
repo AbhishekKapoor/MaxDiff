@@ -83,8 +83,9 @@ def api_design():
     t = int(t) if t else None
     v = max(1, int(v)) if v else None
 
-    # Default: n_versions = n_respondents (Sawtooth convention; needed for HB)
-    effective_versions = v if v is not None else n_resp
+    # Sawtooth research shows HB accuracy plateaus after ~20-30 versions;
+    # 50 is sufficient for any method. Cap auto-default at 50 (never n_respondents).
+    effective_versions = v if v is not None else min(50, n_resp)
 
     try:
         items_df, design_df, stats = generate_design_from_attributes(
