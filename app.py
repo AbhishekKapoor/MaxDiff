@@ -99,6 +99,25 @@ def api_design():
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
 
+    # Warn when user-specified tasks give < 3 appearances per item
+    n_items_actual  = int(stats["n_items"])
+    k_actual        = int(stats["k_per_task"])
+    t_actual        = int(stats["n_tasks"])
+    appearances     = (t_actual * k_actual) / n_items_actual
+    design_warnings = []
+    if appearances < 2:
+        min_tasks = int(np.ceil(2 * n_items_actual / k_actual))
+        design_warnings.append(
+            f"Only {appearances:.1f} appearances per item — too few for reliable estimates. "
+            f"Increase tasks to at least {min_tasks}."
+        )
+    elif appearances < 3:
+        min_tasks = int(np.ceil(3 * n_items_actual / k_actual))
+        design_warnings.append(
+            f"{appearances:.1f} appearances per item — below Sawtooth's recommended minimum of 3. "
+            f"Increase tasks to {min_tasks} for reliable HB estimates."
+        )
+
     _state["items_df"]  = items_df.copy()
     _state["design_df"] = design_df.copy()
     _state["stats"]     = stats
@@ -120,6 +139,7 @@ def api_design():
         "pair_cv":       round(float(stats["pair_cv"]), 4),
         "mean_appearances": round(float(stats["mean_appearances"]), 1),
         "attributes":    attributes,
+        "design_warnings": design_warnings,
     })
 
 
