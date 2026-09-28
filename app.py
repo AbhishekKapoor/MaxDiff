@@ -83,6 +83,9 @@ def api_design():
     t = int(t) if t else None
     v = max(1, int(v)) if v else None
 
+    # Default: n_versions = n_respondents (Sawtooth convention; needed for HB)
+    effective_versions = v if v is not None else n_resp
+
     try:
         items_df, design_df, stats = generate_design_from_attributes(
             attributes=attributes,
@@ -90,7 +93,7 @@ def api_design():
             k_per_task=k,
             n_tasks=t,
             seed=42,
-            n_versions=v if v is not None else 2,
+            n_versions=effective_versions,
         )
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
