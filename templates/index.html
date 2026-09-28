@@ -137,6 +137,22 @@ input[type=radio] { accent-color: #2e6da4; }
 
 /* ── Hidden ── */
 .hidden { display: none !important; }
+
+/* ── Progress bar ── */
+.progress-wrap { background: #e2e8f0; border-radius: 6px; height: 20px; overflow: hidden; margin: 8px 0; }
+.progress-bar  { height: 100%; background: linear-gradient(90deg, #2e6da4, #4299e1);
+                 border-radius: 6px; transition: width .5s ease; }
+.progress-label { font-size: 12px; color: #4a5568; margin-top: 4px; }
+
+/* ── HB settings ── */
+.hb-settings { background: #ebf3fb; border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+.hb-settings .form-row { grid-template-columns: repeat(3, 1fr); }
+.hb-diagnostics { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+                   gap: 10px; margin-top: 10px; }
+.diag-pill { background: #f0fff4; border: 1px solid #c6f6d5; border-radius: 8px;
+             padding: 10px 14px; }
+.diag-pill .val { font-size: 20px; font-weight: 700; color: #276749; }
+.diag-pill .lbl { font-size: 11px; color: #718096; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -183,6 +199,17 @@ input[type=radio] { accent-color: #2e6da4; }
         <div class="field">
           <label>Items per card <span class="hint">(auto)</span></label>
           <input type="number" id="d-k" placeholder="4 or 5" min="3" max="8">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="field">
+          <label>Cards per respondent <span class="hint">(auto)</span></label>
+          <input type="number" id="d-tasks" placeholder="auto" min="4" max="40">
+        </div>
+        <div class="field">
+          <label>Versions <span class="hint">(auto)</span></label>
+          <input type="number" id="d-versions" placeholder="auto" min="1" max="5000">
+          <span class="hint">For HB estimation: set ≈ n_respondents (e.g. 300). Default = 2.</span>
         </div>
       </div>
 
@@ -294,20 +321,52 @@ Warranty &amp; after-sales service</textarea>
         <div>
           <label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px;">Scoring Method</label>
           <div class="toggle-row">
-            <input type="radio" name="method" id="m-counts" value="counts" checked>
+            <input type="radio" name="method" id="m-counts" value="counts" checked onchange="toggleHBSettings()">
             <label for="m-counts" style="font-weight:400;">Counting</label>
-            <input type="radio" name="method" id="m-logit"  value="logit">
+            <input type="radio" name="method" id="m-logit"  value="logit" onchange="toggleHBSettings()">
             <label for="m-logit"  style="font-weight:400;">Aggregate Logit</label>
+            <input type="radio" name="method" id="m-hb"     value="hb"    onchange="toggleHBSettings()">
+            <label for="m-hb"    style="font-weight:400;">Hierarchical Bayes (HB)</label>
           </div>
-          <span class="hint">Counting = fast; Logit = matches Sawtooth more closely</span>
+          <span class="hint">Counting = fast; Logit = matches Sawtooth; HB = individual-level utilities (slow)</span>
+
+          <div id="hb-settings" class="hb-settings hidden">
+            <strong style="font-size:12px;color:#1a3a6b;">HB MCMC Settings</strong>
+            <div class="form-row" style="margin-top:10px;">
+              <div class="field">
+                <label>Total iterations</label>
+                <input type="number" id="hb-n-iter" value="10000" min="1000" max="100000">
+                <span class="hint">10,000 is usually sufficient</span>
+              </div>
+              <div class="field">
+                <label>Burn-in</label>
+                <input type="number" id="hb-burn-in" value="2000" min="500" max="20000">
+                <span class="hint">Iterations to discard</span>
+              </div>
+              <div class="field">
+                <label>Thinning</label>
+                <input type="number" id="hb-thin" value="5" min="1" max="20">
+                <span class="hint">Keep every Nth draw</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="btn-group">
-        <button class="btn btn-primary" onclick="runAnalysis()">
+        <button class="btn btn-primary" id="run-btn" onclick="runAnalysis()">
           <span id="a-spin" class="spinner hidden"></span>
           ◎ Run Analysis
         </button>
+      </div>
+      <div id="hb-progress-wrap" class="hidden" style="margin-top:14px;">
+        <div class="alert alert-info" style="margin-bottom:8px;">
+          <strong>HB MCMC running…</strong> This may take 1–5 minutes depending on data size.
+        </div>
+        <div class="progress-wrap">
+          <div id="hb-progress-bar" class="progress-bar" style="width:0%"></div>
+        </div>
+        <div id="hb-progress-label" class="progress-label">Starting…</div>
       </div>
       <div id="a-error" class="alert alert-error hidden"></div>
     </div>
@@ -319,8 +378,15 @@ Warranty &amp; after-sales service</textarea>
       <div class="card">
         <h2>📊 Results</h2>
         <div id="a-summary" class="summary-grid"></div>
+        <div id="hb-diagnostics" class="hidden">
+          <h3>MCMC Diagnostics</h3>
+          <div class="hb-diagnostics">
+            <div class="diag-pill"><div class="val" id="hb-accept-rate">—</div><div class="lbl">Avg Acceptance Rate (%)<br><small style="color:#a0aec0">(ideal: 25–45%)</small></div></div>
+            <div class="diag-pill"><div class="val" id="hb-n-draws">—</div><div class="lbl">Stored Posterior Draws</div></div>
+          </div>
+        </div>
         <div class="btn-group" style="margin-top:16px;">
-          <a class="btn btn-success" href="/download/importance" download>
+          <a class="btn btn-success" id="dl-importance-btn" href="/download/importance" download>
             ⬇ Importance by Respondent (.csv)
           </a>
           <a class="btn btn-outline" href="/download/excel" download>
@@ -410,10 +476,12 @@ async function generateDesign() {
   document.getElementById('d-error').classList.add('hidden');
 
   const payload = {
-    study_name:   document.getElementById('d-study-name').value,
+    study_name:    document.getElementById('d-study-name').value,
     n_respondents: +document.getElementById('d-n-resp').value,
-    attributes:   document.getElementById('d-attrs').value,
-    k_per_task:   document.getElementById('d-k').value || null,
+    attributes:    document.getElementById('d-attrs').value,
+    k_per_task:    document.getElementById('d-k').value       || null,
+    n_tasks:       document.getElementById('d-tasks').value   || null,
+    n_versions:    document.getElementById('d-versions').value || null,
   };
 
   try {
@@ -462,12 +530,23 @@ function clearDesign() {
 /* ════════════════════════════════════════════════
    ANALYSIS TAB
 ════════════════════════════════════════════════ */
+function toggleHBSettings() {
+  const method = document.querySelector('input[name=method]:checked').value;
+  document.getElementById('hb-settings').classList.toggle('hidden', method !== 'hb');
+}
+
+let _hbPollTimer = null;
+
 async function runAnalysis() {
-  const btn  = document.querySelector('#tab-analysis .btn-primary');
+  const method = document.querySelector('input[name=method]:checked').value;
+  if (method === 'hb') { runHB(); return; }
+
+  const btn  = document.getElementById('run-btn');
   const spin = document.getElementById('a-spin');
   btn.disabled = true; spin.classList.remove('hidden');
   document.getElementById('a-results').classList.add('hidden');
   document.getElementById('a-error').classList.add('hidden');
+  document.getElementById('hb-progress-wrap').classList.add('hidden');
 
   const respFile   = document.querySelector('#zone-resp input[type=file]').files[0];
   const itemsFile  = document.querySelector('#zone-items input[type=file]').files[0];
@@ -479,7 +558,6 @@ async function runAnalysis() {
     return;
   }
 
-  const method = document.querySelector('input[name=method]:checked').value;
   const fd = new FormData();
   fd.append('responses', respFile);
   if (itemsFile)  fd.append('items',  itemsFile);
@@ -491,45 +569,130 @@ async function runAnalysis() {
     const res  = await fetch('/api/analysis', { method: 'POST', body: fd });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
-
-    _scores   = data.scores;
-    _cuts     = ['Total', ...data.cuts];
-    _cutsData = data.cuts_data;
-    _nByCut   = data.n_by_cut || {};
-
-    // Summary
-    const mLabel = data.method === 'logit' ? 'Aggregate Logit' : 'Counting';
-    document.getElementById('a-summary').innerHTML = `
-      <div class="stat-pill"><div class="val">${data.n_respondents}</div><div class="lbl">Respondents</div></div>
-      <div class="stat-pill"><div class="val">${data.n_items}</div><div class="lbl">Attributes</div></div>
-      <div class="stat-pill"><div class="val">${data.cuts.length}</div><div class="lbl">Demographic Cuts</div></div>
-      <div class="stat-pill"><div class="val">${mLabel}</div><div class="lbl">Method</div></div>
-    `;
-
-    // Simulator dropdown
-    const sel = document.getElementById('cut-select');
-    sel.innerHTML = '<option value="Total">Total Sample</option>';
-    data.cuts.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c; opt.textContent = _humanCut(c);
-      sel.appendChild(opt);
-    });
-    if (data.cuts.length === 0) {
-      document.getElementById('sim-card').classList.add('hidden');
-    } else {
-      document.getElementById('sim-card').classList.remove('hidden');
-    }
-
-    renderTotalChart();
-    renderSimulator();
-    renderHeatmap();
-
-    document.getElementById('a-results').classList.remove('hidden');
+    _displayResults(data);
   } catch (err) {
     showAError('⚠ ' + err.message);
   } finally {
     btn.disabled = false; spin.classList.add('hidden');
   }
+}
+
+async function runHB() {
+  const btn  = document.getElementById('run-btn');
+  const spin = document.getElementById('a-spin');
+  btn.disabled = true; spin.classList.remove('hidden');
+  document.getElementById('a-results').classList.add('hidden');
+  document.getElementById('a-error').classList.add('hidden');
+  document.getElementById('hb-progress-wrap').classList.remove('hidden');
+  document.getElementById('hb-progress-bar').style.width = '0%';
+  document.getElementById('hb-progress-label').textContent = 'Starting…';
+
+  const respFile   = document.querySelector('#zone-resp input[type=file]').files[0];
+  const itemsFile  = document.querySelector('#zone-items input[type=file]').files[0];
+  const designFile = document.querySelector('#zone-design input[type=file]').files[0];
+
+  if (!respFile) {
+    showAError('Please upload responses.csv first.');
+    btn.disabled = false; spin.classList.add('hidden');
+    document.getElementById('hb-progress-wrap').classList.add('hidden');
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append('responses', respFile);
+  if (itemsFile)  fd.append('items',  itemsFile);
+  if (designFile) fd.append('design', designFile);
+  fd.append('study_name', document.getElementById('a-study-name').value);
+  fd.append('n_iter',  document.getElementById('hb-n-iter').value);
+  fd.append('burn_in', document.getElementById('hb-burn-in').value);
+  fd.append('thin',    document.getElementById('hb-thin').value);
+
+  try {
+    const res  = await fetch('/api/hb_start', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    spin.classList.add('hidden');
+    if (_hbPollTimer) clearInterval(_hbPollTimer);
+    _hbPollTimer = setInterval(_pollHBProgress, 1000);
+  } catch (err) {
+    showAError('⚠ ' + err.message);
+    btn.disabled = false; spin.classList.add('hidden');
+    document.getElementById('hb-progress-wrap').classList.add('hidden');
+  }
+}
+
+async function _pollHBProgress() {
+  try {
+    const res  = await fetch('/api/hb_progress');
+    const data = await res.json();
+
+    document.getElementById('hb-progress-bar').style.width = data.pct + '%';
+    document.getElementById('hb-progress-label').textContent =
+      `Iteration ${data.current_iter.toLocaleString()} / ${data.total_iter.toLocaleString()} (${data.pct}%)`;
+
+    if (data.status === 'done') {
+      clearInterval(_hbPollTimer); _hbPollTimer = null;
+      document.getElementById('hb-progress-wrap').classList.add('hidden');
+      document.getElementById('run-btn').disabled = false;
+      const r = await (await fetch('/api/hb_result')).json();
+      if (!r.success) throw new Error(r.error);
+      _displayResults(r);
+    } else if (data.status === 'error') {
+      clearInterval(_hbPollTimer); _hbPollTimer = null;
+      document.getElementById('hb-progress-wrap').classList.add('hidden');
+      document.getElementById('run-btn').disabled = false;
+      showAError('HB error: ' + data.error);
+    }
+  } catch (err) {
+    clearInterval(_hbPollTimer); _hbPollTimer = null;
+    document.getElementById('run-btn').disabled = false;
+    showAError('⚠ ' + err.message);
+  }
+}
+
+function _displayResults(data) {
+  _scores   = data.scores;
+  _cuts     = ['Total', ...data.cuts];
+  _cutsData = data.cuts_data;
+  _nByCut   = data.n_by_cut || {};
+
+  const isHB   = data.method === 'hb';
+  const mLabel = isHB ? 'HB (Individual)' : (data.method === 'logit' ? 'Aggregate Logit' : 'Counting');
+  document.getElementById('a-summary').innerHTML = `
+    <div class="stat-pill"><div class="val">${data.n_respondents}</div><div class="lbl">Respondents</div></div>
+    <div class="stat-pill"><div class="val">${data.n_items}</div><div class="lbl">Attributes</div></div>
+    <div class="stat-pill"><div class="val">${data.cuts.length}</div><div class="lbl">Demographic Cuts</div></div>
+    <div class="stat-pill"><div class="val">${mLabel}</div><div class="lbl">Method</div></div>
+  `;
+
+  // HB diagnostics
+  if (isHB) {
+    document.getElementById('hb-accept-rate').textContent = data.mean_accept_rate + '%';
+    document.getElementById('hb-n-draws').textContent     = data.n_draws.toLocaleString();
+    document.getElementById('hb-diagnostics').classList.remove('hidden');
+    document.getElementById('dl-importance-btn').href     = '/download/hb_individual';
+    document.getElementById('dl-importance-btn').setAttribute('download', 'hb_individual_utilities.csv');
+  } else {
+    document.getElementById('hb-diagnostics').classList.add('hidden');
+    document.getElementById('dl-importance-btn').href     = '/download/importance';
+    document.getElementById('dl-importance-btn').setAttribute('download', 'importance_by_respondent.csv');
+  }
+
+  // Simulator dropdown
+  const sel = document.getElementById('cut-select');
+  sel.innerHTML = '<option value="Total">Total Sample</option>';
+  data.cuts.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = _humanCut(c);
+    sel.appendChild(opt);
+  });
+  document.getElementById('sim-card').classList.toggle('hidden', data.cuts.length === 0);
+
+  renderTotalChart();
+  renderSimulator();
+  renderHeatmap();
+  document.getElementById('a-results').classList.remove('hidden');
 }
 
 function showAError(msg) {

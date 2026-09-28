@@ -13,6 +13,7 @@ Then open http://localhost:5000
 import os
 import sys
 import io
+import threading
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,7 @@ from maxdiff.analysis import (
     build_importance_matrix, compute_summary_stats,
 )
 from maxdiff.excel_output import build_workbook
+from maxdiff.hb import hb_maxdiff, hb_aggregate_scores, hb_cut_scores
 
 app = Flask(__name__)
 
@@ -40,6 +42,15 @@ _state: dict = {
     "design_df":   None,
     "stats":       None,
     "analysis":    None,
+}
+
+_hb_lock = threading.Lock()
+_hb_state: dict = {
+    "status":       "idle",   # idle | running | done | error
+    "current_iter": 0,
+    "total_iter":   0,
+    "result":       None,
+    "error":        "",
 }
 
 
@@ -67,8 +78,10 @@ def api_design():
 
     k = data.get("k_per_task") or None
     t = data.get("n_tasks")    or None
+    v = data.get("n_versions") or None
     k = int(k) if k else None
     t = int(t) if t else None
+    v = max(1, int(v)) if v else None
 
     try:
         items_df, design_df, stats = generate_design_from_attributes(
@@ -77,7 +90,7 @@ def api_design():
             k_per_task=k,
             n_tasks=t,
             seed=42,
-            n_versions=2,
+            n_versions=v if v is not None else 2,
         )
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
@@ -372,6 +385,244 @@ def _score_individual_respondents(
         rows.append(row_data)
 
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# HB routes
+# ---------------------------------------------------------------------------
+
+def _run_hb_thread(responses_df, design_df, n_items, items_df, cut_vars,
+                   n_iter, burn_in, thin, study_name):
+    """Background thread: runs HB MCMC and stores result in _hb_state."""
+    id_to_label = dict(zip(items_df["item_id"], items_df["item_label"]))
+
+    def progress_fn(current, total):
+        with _hb_lock:
+            _hb_state["current_iter"] = current
+            _hb_state["total_iter"]   = total
+
+    try:
+        hb_result = hb_maxdiff(
+            responses_df=responses_df,
+            design_df=design_df,
+            n_items=n_items,
+            n_iter=n_iter,
+            burn_in=burn_in,
+            thin=thin,
+            progress_fn=progress_fn,
+        )
+
+        raw_utils      = hb_result["raw_utilities"]
+        respondent_ids = hb_result["respondent_ids"]
+
+        total_scores_df = hb_aggregate_scores(raw_utils, items_df)
+        total_scores_df["item_label"] = total_scores_df["item_id"].map(id_to_label)
+
+        cut_scores_dict = hb_cut_scores(raw_utils, responses_df, items_df,
+                                        respondent_ids, cut_vars)
+
+        # Build importance_matrix and n_by_cut
+        all_results      = {"Total": total_scores_df, **cut_scores_dict}
+        importance_matrix = build_importance_matrix(all_results, items_df)
+        summary_stats     = compute_summary_stats(responses_df, cut_vars)
+        n_by_cut          = dict(zip(summary_stats["cut"], summary_stats["n"]))
+
+        # Build individual DataFrame with actual item labels
+        ind_df = hb_result["individual_df"].copy()
+        rename = {f"item_{j+1}": id_to_label.get(j+1, f"item_{j+1}")
+                  for j in range(n_items)}
+        ind_df.rename(columns=rename, inplace=True)
+
+        with _hb_lock:
+            _hb_state["result"] = {
+                "study_name":       study_name,
+                "hb_result":        hb_result,
+                "total_scores":     total_scores_df,
+                "cut_scores":       cut_scores_dict,
+                "importance_matrix": importance_matrix,
+                "items_df":         items_df,
+                "cut_vars":         cut_vars,
+                "n_by_cut":         n_by_cut,
+                "ind_df":           ind_df,
+                "n_items":          n_items,
+                "n_respondents":    responses_df["respondent_id"].nunique(),
+            }
+            _hb_state["status"]       = "done"
+            _hb_state["current_iter"] = n_iter
+            _hb_state["total_iter"]   = n_iter
+
+    except Exception as exc:
+        with _hb_lock:
+            _hb_state["status"] = "error"
+            _hb_state["error"]  = str(exc)
+
+
+@app.route("/api/hb_start", methods=["POST"])
+def api_hb_start():
+    with _hb_lock:
+        if _hb_state["status"] == "running":
+            return jsonify({"success": False, "error": "HB is already running."}), 400
+
+    responses_file = request.files.get("responses")
+    items_file     = request.files.get("items")
+    design_file    = request.files.get("design")
+    study_name     = request.form.get("study_name", "MaxDiff Study")
+    n_iter  = int(request.form.get("n_iter",  10000))
+    burn_in = int(request.form.get("burn_in", 2000))
+    thin    = int(request.form.get("thin",    5))
+
+    if not responses_file:
+        return jsonify({"success": False, "error": "responses.csv is required."}), 400
+    if not items_file and _state["items_df"] is None:
+        return jsonify({"success": False,
+                        "error": "items.csv is required (or run the Design tab first)."}), 400
+
+    try:
+        responses_df = pd.read_csv(responses_file)
+    except Exception as exc:
+        return jsonify({"success": False, "error": f"Cannot read responses: {exc}"}), 400
+
+    if items_file:
+        try:
+            items_df = pd.read_csv(items_file)
+        except Exception as exc:
+            return jsonify({"success": False, "error": f"Cannot read items: {exc}"}), 400
+    else:
+        items_df = _state["items_df"].copy()
+
+    required_cols = ["respondent_id", "version", "task", "best_item", "worst_item"]
+    missing = [c for c in required_cols if c not in responses_df.columns]
+    if missing:
+        return jsonify({"success": False,
+                        "error": f"responses.csv is missing columns: {missing}"}), 400
+    if "item_id" not in items_df.columns or "item_label" not in items_df.columns:
+        return jsonify({"success": False,
+                        "error": "items.csv must have columns: item_id, item_label"}), 400
+
+    n_items     = len(items_df)
+    label_to_id = dict(zip(items_df["item_label"], items_df["item_id"]))
+
+    for col in ["best_item", "worst_item"]:
+        if responses_df[col].dtype == object:
+            responses_df[col] = responses_df[col].map(label_to_id)
+    responses_df["best_item"]  = pd.to_numeric(responses_df["best_item"],  errors="coerce").fillna(0).astype(int)
+    responses_df["worst_item"] = pd.to_numeric(responses_df["worst_item"], errors="coerce").fillna(0).astype(int)
+
+    if design_file:
+        try:
+            raw = pd.read_csv(design_file)
+            item_cols = [c for c in raw.columns if c.startswith("item_") and c != "item_id"]
+            design_df = raw.copy()
+            for col in item_cols:
+                pos_col = "position_" + col.split("_")[1]
+                design_df[pos_col] = design_df[col].map(label_to_id)
+        except Exception as exc:
+            return jsonify({"success": False, "error": f"Cannot read design: {exc}"}), 400
+    elif _state["design_df"] is not None:
+        design_df = _state["design_df"].copy()
+    else:
+        attrs  = items_df["item_label"].tolist()
+        n_seen = max(responses_df["respondent_id"].nunique(), 100)
+        _, design_df, _ = generate_design_from_attributes(attrs, n_seen, seed=42, n_versions=2)
+
+    non_cut = set(required_cols)
+    cut_vars = [
+        c for c in responses_df.columns
+        if c not in non_cut and responses_df[c].nunique() <= 20
+    ]
+
+    with _hb_lock:
+        _hb_state["status"]       = "running"
+        _hb_state["current_iter"] = 0
+        _hb_state["total_iter"]   = n_iter
+        _hb_state["result"]       = None
+        _hb_state["error"]        = ""
+
+    t = threading.Thread(
+        target=_run_hb_thread,
+        args=(responses_df, design_df, n_items, items_df, cut_vars,
+              n_iter, burn_in, thin, study_name),
+        daemon=True,
+    )
+    t.start()
+
+    return jsonify({"success": True, "n_iter": n_iter})
+
+
+@app.route("/api/hb_progress")
+def api_hb_progress():
+    with _hb_lock:
+        s = dict(_hb_state)
+    pct = 0
+    if s["total_iter"] > 0:
+        pct = round(s["current_iter"] / s["total_iter"] * 100, 1)
+    return jsonify({
+        "status":       s["status"],
+        "current_iter": s["current_iter"],
+        "total_iter":   s["total_iter"],
+        "pct":          pct,
+        "error":        s["error"],
+    })
+
+
+@app.route("/api/hb_result")
+def api_hb_result():
+    with _hb_lock:
+        s = dict(_hb_state)
+    if s["status"] != "done":
+        return jsonify({"success": False, "error": "HB not complete yet."}), 400
+
+    r         = s["result"]
+    hb        = r["hb_result"]
+    tot       = r["total_scores"]
+    imp_mat   = r["importance_matrix"]
+    items_df  = r["items_df"]
+    id_to_label = dict(zip(items_df["item_id"], items_df["item_label"]))
+
+    scores_out = [
+        {
+            "item_id":    int(row["item_id"]),
+            "label":      row["item_label"],
+            "importance": float(row["importance_0_100"]),
+            "rank":       int(row["rank"]),
+        }
+        for _, row in tot.iterrows()
+    ]
+
+    cut_cols  = [c for c in imp_mat.columns if c not in ("item_id", "item_label")]
+    cuts_data = {}
+    for _, row in imp_mat.iterrows():
+        lbl = row["item_label"]
+        cuts_data[lbl] = {
+            col: (round(float(row[col]), 1) if pd.notna(row.get(col)) else None)
+            for col in cut_cols
+        }
+
+    return jsonify({
+        "success":          True,
+        "scores":           scores_out,
+        "cuts":             cut_cols,
+        "cuts_data":        cuts_data,
+        "n_respondents":    int(r["n_respondents"]),
+        "n_items":          int(r["n_items"]),
+        "method":           "hb",
+        "n_by_cut":         {k: int(v) for k, v in r["n_by_cut"].items()},
+        "mean_accept_rate": round(float(hb["mean_accept_rate"]) * 100, 1),
+        "n_draws":          int(hb["n_draws"]),
+    })
+
+
+@app.route("/download/hb_individual")
+def download_hb_individual():
+    with _hb_lock:
+        s = dict(_hb_state)
+    if s["status"] != "done" or s["result"] is None:
+        return "No HB analysis complete yet.", 404
+    csv_data = s["result"]["ind_df"].to_csv(index=False)
+    resp = make_response(csv_data)
+    resp.headers["Content-Disposition"] = "attachment; filename=hb_individual_utilities.csv"
+    resp.headers["Content-Type"] = "text/csv"
+    return resp
 
 
 # ---------------------------------------------------------------------------
