@@ -394,6 +394,89 @@ Warranty &amp; after-sales service</textarea>
       <div id="a-error" class="alert alert-error hidden"></div>
     </div>
 
+    <!-- Sample Data Format Card -->
+    <div class="card">
+      <h2>📋 Sample Response Format</h2>
+      <p style="font-size:12px;color:#718096;margin-bottom:12px;line-height:1.6;">
+        Your <strong>responses.csv</strong> must have these 5 required columns.
+        Optional demographic columns (gender, age_group, region, etc.) automatically become filter variables in the Simulator.
+      </p>
+
+      <h3 style="margin-top:16px;">Required Columns</h3>
+      <p style="font-size:12px;color:#4a5568;margin-bottom:8px;">
+        <code>respondent_id</code> · <code>version</code> · <code>task</code> · <code>best_item</code> · <code>worst_item</code>
+      </p>
+
+      <h3 style="margin-top:14px;">Example Data</h3>
+      <div class="heatmap-wrap" style="margin-top:8px;">
+        <table class="heatmap" style="font-size:11px;">
+          <thead>
+            <tr>
+              <th>respondent_id</th>
+              <th>version</th>
+              <th>task</th>
+              <th>best_item</th>
+              <th>worst_item</th>
+              <th style="color:#a0aec0;">gender</th>
+              <th style="color:#a0aec0;">age_group</th>
+              <th style="color:#a0aec0;">region</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>R001</td><td>1</td><td>1</td><td>5</td><td>2</td>
+              <td style="color:#a0aec0;">Male</td><td style="color:#a0aec0;">25-34</td><td style="color:#a0aec0;">North</td>
+            </tr>
+            <tr>
+              <td>R001</td><td>1</td><td>2</td><td>3</td><td>8</td>
+              <td style="color:#a0aec0;">Male</td><td style="color:#a0aec0;">25-34</td><td style="color:#a0aec0;">North</td>
+            </tr>
+            <tr>
+              <td>R001</td><td>1</td><td>3</td><td>7</td><td>1</td>
+              <td style="color:#a0aec0;">Male</td><td style="color:#a0aec0;">25-34</td><td style="color:#a0aec0;">North</td>
+            </tr>
+            <tr>
+              <td>R002</td><td>1</td><td>1</td><td>2</td><td>6</td>
+              <td style="color:#a0aec0;">Female</td><td style="color:#a0aec0;">35-44</td><td style="color:#a0aec0;">South</td>
+            </tr>
+            <tr>
+              <td>R002</td><td>1</td><td>2</td><td>4</td><td>3</td>
+              <td style="color:#a0aec0;">Female</td><td style="color:#a0aec0;">35-44</td><td style="color:#a0aec0;">South</td>
+            </tr>
+            <tr style="opacity:0.5;">
+              <td>…</td><td>…</td><td>…</td><td>…</td><td>…</td>
+              <td style="color:#a0aec0;">…</td><td style="color:#a0aec0;">…</td><td style="color:#a0aec0;">…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:14px;">Column Descriptions</h3>
+      <ul style="font-size:12px;color:#4a5568;margin:8px 0 0 20px;line-height:1.8;">
+        <li><strong>respondent_id</strong> — Unique identifier for each person (e.g., R001, R002)</li>
+        <li><strong>version</strong> — Design version assigned to this respondent (1, 2, 3, …)</li>
+        <li><strong>task</strong> — Card number answered (1, 2, 3, …)</li>
+        <li><strong>best_item</strong> — Item ID or label they chose as <strong>BEST</strong> on this card</li>
+        <li><strong>worst_item</strong> — Item ID or label they chose as <strong>WORST</strong> on this card</li>
+        <li><em style="color:#a0aec0;">Optional: </em><strong>gender, age_group, region, …</strong> — Any demographic columns (≤20 unique values) become cut variables in the Simulator</li>
+      </ul>
+
+      <h3 style="margin-top:14px;">Tips</h3>
+      <ul style="font-size:12px;color:#4a5568;margin:8px 0 0 20px;line-height:1.8;">
+        <li><strong>Item IDs vs. Labels:</strong> Use either numeric IDs (1, 2, 3) or full item labels. The tool auto-converts.</li>
+        <li><strong>One row per task:</strong> Each respondent gets one row for each card they answer.</li>
+        <li><strong>Headers required:</strong> First row must be column names (respondent_id, version, task, best_item, worst_item).</li>
+        <li><strong>Demographics:</strong> Keep values consistent (e.g., always "Male" or "Female", not mixed case).</li>
+        <li><strong>Download template:</strong> Use the button below to get a starter CSV template.</li>
+      </ul>
+
+      <div class="btn-group" style="margin-top:14px;">
+        <button class="btn btn-outline btn-sm" onclick="downloadResponseTemplate()">
+          ⬇ Download response.csv Template
+        </button>
+      </div>
+    </div>
+
     <!-- Results (hidden until analysis runs) -->
     <div id="a-results" class="hidden">
 
@@ -881,6 +964,24 @@ function _heatColor(t) {
     const b = Math.round(164 + (107 - 164) * u);
     return `rgb(${r},${g},${b})`;
   }
+}
+
+/* ── Download response template ── */
+function downloadResponseTemplate() {
+  const template = `respondent_id,version,task,best_item,worst_item,gender,age_group,region
+R001,1,1,5,2,Male,25-34,North
+R001,1,2,3,8,Male,25-34,North
+R001,1,3,7,1,Male,25-34,North
+R001,1,4,2,6,Male,25-34,North
+R002,1,1,2,6,Female,35-44,South
+R002,1,2,4,3,Female,35-44,South
+R002,1,3,1,5,Female,35-44,South
+R002,1,4,6,2,Female,35-44,South
+R003,2,1,4,1,Male,45-54,East
+R003,2,2,3,7,Male,45-54,East
+R003,2,3,5,2,Male,45-54,East
+R003,2,4,1,8,Male,45-54,East`;
+  downloadText(template, 'response_template.csv');
 }
 
 /* ── Drag-and-drop for upload zones ── */
