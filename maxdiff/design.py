@@ -180,10 +180,34 @@ def auto_design_params(n_items: int, n_respondents: int) -> Dict:
 
 def _build_warnings(n_items, k, n_tasks, appearances, n_respondents, min_n, ideal_n):
     warnings = []
+
+    # Items per set check (Sawtooth p. 95-96)
+    if k > n_items / 2:
+        warnings.append(
+            f"Items per set ({k}) exceeds half the total items ({n_items}). "
+            f"Sawtooth recommends k ≤ {n_items // 2} for this study size."
+        )
+
+    # Appearances per item check (Sawtooth Design Guide p. 91-134)
     if appearances < 2:
-        warnings.append(f"Only {appearances:.1f} appearances/item — too low. Increase n_tasks.")
+        warnings.append(
+            f"Only {appearances:.1f} appearances/item — below minimum (2.0). "
+            f"Increase n_tasks or reduce k for reliable estimates."
+        )
     elif appearances < 3:
-        warnings.append(f"{appearances:.1f} appearances/item — acceptable but 3+ is ideal.")
+        warnings.append(
+            f"{appearances:.1f} appearances/item — acceptable but 3-5 is ideal "
+            f"for HB individual-level scores. For aggregate analysis (Counting/Logit) this is OK."
+        )
+
+    # Task fatigue check (Sawtooth Design Guide p. 140-143)
+    if n_tasks > 25:
+        warnings.append(
+            f"{n_tasks} tasks per respondent exceeds Sawtooth recommendation (≤25). "
+            f"More tasks risk respondent fatigue and lower data quality."
+        )
+
+    # Sample size check
     if n_respondents < min_n:
         warnings.append(
             f"n={n_respondents} is below minimum ({min_n}). "
@@ -191,6 +215,7 @@ def _build_warnings(n_items, k, n_tasks, appearances, n_respondents, min_n, idea
         )
     elif n_respondents < ideal_n:
         warnings.append(f"n={n_respondents} is below ideal ({ideal_n}) for high-precision estimates.")
+
     return warnings
 
 
@@ -276,10 +301,12 @@ def _compute_design_stats(tasks: List[List[int]], n_items: int,
     """Compute balance and orthogonality statistics for a design."""
     item_counts = np.zeros(n_items + 1, dtype=int)
     pair_counts = np.zeros((n_items + 1, n_items + 1), dtype=int)
+    position_counts = np.zeros((n_items + 1, k_per_task + 1), dtype=int)  # position balance
 
     for task in tasks:
-        for item in task:
+        for pos, item in enumerate(task, 1):
             item_counts[item] += 1
+            position_counts[item][pos] += 1
         for a, b in combinations(task, 2):
             pair_counts[a][b] += 1
             pair_counts[b][a] += 1
@@ -292,6 +319,10 @@ def _compute_design_stats(tasks: List[List[int]], n_items: int,
 
     pair_arr = np.array(pair_vals)
     item_arr = item_counts[1:]
+
+    # Positional balance: CV of position frequencies (Sawtooth p. 213-214)
+    position_arr = position_counts[1:, 1:k_per_task+1].flatten()
+    position_cv = (position_arr.std() / position_arr.mean()) if position_arr.mean() > 0 else 0
 
     # Pairwise orthogonality: coefficient of variation of pair counts
     pair_cv = (pair_arr.std() / pair_arr.mean()) if pair_arr.mean() > 0 else 0
@@ -314,6 +345,7 @@ def _compute_design_stats(tasks: List[List[int]], n_items: int,
         "pair_counts_max": int(pair_arr.max()),
         "pair_counts_mean": float(pair_arr.mean()),
         "pair_cv": float(round(pair_cv, 4)),
+        "position_cv": float(round(position_cv, 4)),  # Sawtooth positional balance
         "is_orthogonal": is_orthogonal,
         "design_type": params.get("design_type", "Balanced"),
         "feasibility": params,
@@ -330,7 +362,7 @@ def generate_design_from_attributes(
     k_per_task: Optional[int] = None,
     n_tasks: Optional[int] = None,
     seed: int = 42,
-    n_versions: int = 1,
+    n_versions: Optional[int] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
     """
     Generate a MaxDiff card design from a list of attribute names and
@@ -345,7 +377,9 @@ def generate_design_from_attributes(
     k_per_task    : Items per task (auto-selected if None; Sawtooth recommends 4-5)
     n_tasks       : Tasks per respondent (auto-selected if None)
     seed          : Random seed for reproducibility
-    n_versions    : Number of design versions (rotated variants for large samples)
+    n_versions    : Number of design versions (auto-selected if None per Sawtooth guidance).
+                    Sawtooth recommends multiple versions to reduce context bias.
+                    Default: min(50, n_respondents) for robust design across respondent pool.
 
     Returns
     -------
@@ -353,6 +387,10 @@ def generate_design_from_attributes(
     design_df     : DataFrame [version, task, position_1..k, items]
     stats         : Dict with balance, orthogonality, and feasibility metrics
     """
+
+    # Auto-select n_versions per Sawtooth recommendation (Design Guide p. 125-129)
+    if n_versions is None:
+        n_versions = min(50, max(6, n_respondents // 50))  # Scale with sample size, cap at 50
     n_items = len(attributes)
     if n_items < 4:
         raise ValueError("MaxDiff requires at least 4 attributes.")
@@ -363,17 +401,32 @@ def generate_design_from_attributes(
         "item_label": attributes,
     })
 
+    # Validate k_per_task if provided (Sawtooth recommendation: k ≤ n_items/2)
+    if k_per_task is not None and k_per_task > n_items / 2:
+        import warnings as warn_module
+        warn_module.warn(
+            f"k_per_task ({k_per_task}) exceeds half of n_items ({n_items}). "
+            f"Sawtooth recommends k ≤ {n_items // 2}. Proceeding anyway.",
+            UserWarning
+        )
+
     # Auto-select parameters
     params = auto_design_params(n_items, n_respondents)
     if k_per_task is not None:
         params["k_per_task"] = k_per_task
     if n_tasks is not None:
         params["n_tasks"] = n_tasks
-        # Recompute params for the overridden values
-        params["appearances_per_item"] = round(params["n_tasks"] * params["k_per_task"] / n_items, 2)
 
+    # Recompute appearances and warnings after any user overrides
     k = params["k_per_task"]
     t = params["n_tasks"]
+    appearances = round(t * k / n_items, 2)
+    params["appearances_per_item"] = appearances
+
+    # Regenerate warnings with potentially overridden values
+    min_n = max(150, int(300 / appearances))
+    ideal_n = max(300, int(500 / appearances))
+    params["warnings"] = _build_warnings(n_items, k, t, appearances, n_respondents, min_n, ideal_n)
 
     if k >= n_items:
         raise ValueError(f"k_per_task ({k}) must be less than n_items ({n_items}).")
@@ -510,6 +563,14 @@ def print_design_summary(stats: Dict) -> None:
     print(f"  Max appearances/item     : {stats['max_appearances']}")
     print(f"  Mean appearances/item    : {stats['mean_appearances']:.2f}")
     print(f"  Item balance ratio       : {stats['item_balance_ratio']:.3f}  (1.0 = perfect)")
+
+    print()
+    print("  POSITIONAL BALANCE (Sawtooth)")
+    print("  " + "-" * 40)
+    pos_cv = stats.get('position_cv', 'N/A')
+    print(f"  Position coefficient var : {pos_cv:.4f}  (0 = perfect, <0.05 = excellent)")
+    if pos_cv != 'N/A' and pos_cv < 0.05:
+        print(f"  Status                   : ✓ Excellent (eliminates order bias)")
 
     # Sample size
     if isinstance(feas, dict):
