@@ -495,7 +495,7 @@ Warranty &amp; after-sales service</textarea>
           <a class="btn btn-success" id="dl-importance-btn" href="/download/importance" download>
             ⬇ Importance by Respondent (.csv)
           </a>
-          <a class="btn btn-outline" href="/download/excel" download>
+          <a class="btn btn-outline" id="dl-excel-btn" href="/download/excel" download>
             ⬇ Full Excel Workbook (.xlsx)
           </a>
         </div>
@@ -837,10 +837,14 @@ function _displayResults(data) {
     document.getElementById('hb-diagnostics').classList.remove('hidden');
     document.getElementById('dl-importance-btn').href     = '/download/hb_individual';
     document.getElementById('dl-importance-btn').setAttribute('download', 'hb_individual_utilities.csv');
+    document.getElementById('dl-excel-btn').href = '/download/excel_hb';
+    document.getElementById('dl-excel-btn').setAttribute('download', 'MaxDiff_Results_HB.xlsx');
   } else {
     document.getElementById('hb-diagnostics').classList.add('hidden');
     document.getElementById('dl-importance-btn').href     = '/download/importance';
     document.getElementById('dl-importance-btn').setAttribute('download', 'importance_by_respondent.csv');
+    document.getElementById('dl-excel-btn').href = '/download/excel';
+    document.getElementById('dl-excel-btn').setAttribute('download', 'MaxDiff_Results.xlsx');
   }
 
   // Simulator dropdown

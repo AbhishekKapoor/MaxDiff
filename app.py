@@ -470,6 +470,8 @@ def _run_hb_thread(responses_df, design_df, n_items, items_df, cut_vars,
                 "ind_df":           ind_df,
                 "n_items":          n_items,
                 "n_respondents":    responses_df["respondent_id"].nunique(),
+                "responses_df":     responses_df,
+                "design_df":        design_df,
             }
             _hb_state["status"]       = "done"
             _hb_state["current_iter"] = n_iter
@@ -647,6 +649,45 @@ def download_hb_individual():
     resp.headers["Content-Disposition"] = "attachment; filename=hb_individual_utilities.csv"
     resp.headers["Content-Type"] = "text/csv"
     return resp
+
+
+@app.route("/download/excel_hb")
+def download_excel_hb():
+    with _hb_lock:
+        s = dict(_hb_state)
+    if s["status"] != "done" or s["result"] is None:
+        return "No HB analysis complete yet.", 404
+
+    r = s["result"]
+    cut_results = {"Total": r["total_scores"], **r["cut_scores"]}
+
+    os.makedirs("output", exist_ok=True)
+    out_path = os.path.join("output", "MaxDiff_Results_HB.xlsx")
+    build_workbook(
+        output_path=out_path,
+        design_df=r["design_df"],
+        design_stats=_state.get("stats") or {
+            "design_type": "Balanced", "n_items": r["n_items"],
+            "k_per_task": 5, "n_tasks": 12, "n_versions": 2,
+            "is_orthogonal": False, "pair_cv": 0.1,
+            "mean_appearances": 3.0, "min_appearances": 3, "max_appearances": 4,
+            "item_balance_ratio": 0.75, "pair_counts_min": 1,
+            "pair_counts_max": 2, "pair_counts_mean": 1.5,
+        },
+        responses_df=r["responses_df"],
+        items_df=r["items_df"],
+        cut_results=cut_results,
+        importance_matrix=r["importance_matrix"],
+        cut_variables=r["cut_vars"],
+        n_respondents_by_cut=r["n_by_cut"],
+        method_label="Hierarchical Bayes (HB)",
+    )
+    return send_file(
+        os.path.abspath(out_path),
+        as_attachment=True,
+        download_name="MaxDiff_Results_HB.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ---------------------------------------------------------------------------
