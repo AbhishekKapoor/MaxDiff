@@ -569,11 +569,29 @@ def _write_simulator(ws, importance_matrix, items_df, n_respondents_by_cut):
         bottom=Side(style="medium", color="2E75B6"),
     )
 
-    # Data validation: dropdown of cut labels
-    dv_list = ",".join([f'"{c}"' for c in cut_cols])
+    # ---- Lookup table position (used below both by the dropdown's source
+    # range and by the VLOOKUP table built further down) ----
+    lookup_start_col = 12  # Column L onwards — scores lookup table
+    lookup_start_row = 7
+
+    # Data validation: dropdown of cut labels.
+    # Excel's inline list formula ("a","b",...) is capped at 255 characters —
+    # with many/long cut names (e.g. "Type of Respondent_Dealer/Retreaders")
+    # that cap is exceeded, silently corrupting the workbook (Excel then
+    # "repairs" it by stripping the validation). Use a cell-range reference
+    # instead, which has no such length limit.
+    dv_list_col = lookup_start_col + len(items_df) + 2  # a couple cols past the lookup table
+    for i, c in enumerate(cut_cols):
+        ws.cell(row=lookup_start_row + 1 + i, column=dv_list_col, value=c)
+    ws.column_dimensions[get_column_letter(dv_list_col)].hidden = True
+
+    dv_range = (
+        f"${get_column_letter(dv_list_col)}${lookup_start_row + 1}:"
+        f"${get_column_letter(dv_list_col)}${lookup_start_row + len(cut_cols)}"
+    )
     dv = DataValidation(
         type="list",
-        formula1=dv_list,
+        formula1=dv_range,
         allow_blank=False,
         showDropDown=False,
     )
@@ -606,9 +624,8 @@ def _write_simulator(ws, importance_matrix, items_df, n_respondents_by_cut):
     # We'll put the scores_lookup table starting at column K (col 11)
     # Format: [cut_label, item1_score, item2_score, ...]
     # The VLOOKUP formula in the Importance column will look this up
-
-    lookup_start_col = 12  # Column L onwards — scores lookup table
-    lookup_start_row = 7
+    # (lookup_start_col / lookup_start_row are set earlier, before the
+    # dropdown block, since the dropdown's source range also needs them)
 
     # Header: cut label
     ws.cell(row=lookup_start_row, column=lookup_start_col, value="LOOKUP TABLE (auto)").font = _font(size=8, italic=True, colour="AAAAAA")
