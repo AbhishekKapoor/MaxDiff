@@ -30,7 +30,7 @@ from maxdiff.analysis import (
     build_importance_matrix, compute_summary_stats,
 )
 from maxdiff.excel_output import build_workbook
-from maxdiff.hb import hb_maxdiff, hb_aggregate_scores, hb_cut_scores
+from maxdiff.hb import hb_maxdiff, hb_aggregate_scores, hb_cut_scores, hb_cut_shares
 
 app = Flask(__name__)
 
@@ -444,10 +444,13 @@ def _run_hb_thread(responses_df, design_df, n_items, items_df, cut_vars,
 
         cut_scores_dict = hb_cut_scores(raw_utils, responses_df, items_df,
                                         respondent_ids, cut_vars)
+        cut_shares_dict = hb_cut_shares(raw_utils, responses_df, items_df,
+                                        respondent_ids, cut_vars)
 
         # Build importance_matrix and n_by_cut
         all_results      = {"Total": total_scores_df, **cut_scores_dict}
         importance_matrix = build_importance_matrix(all_results, items_df)
+        share_matrix       = build_importance_matrix(cut_shares_dict, items_df, value_col="share_pct")
         summary_stats     = compute_summary_stats(responses_df, cut_vars)
         n_by_cut          = dict(zip(summary_stats["cut"], summary_stats["n"]))
 
@@ -463,7 +466,9 @@ def _run_hb_thread(responses_df, design_df, n_items, items_df, cut_vars,
                 "hb_result":        hb_result,
                 "total_scores":     total_scores_df,
                 "cut_scores":       cut_scores_dict,
+                "cut_shares":       cut_shares_dict,
                 "importance_matrix": importance_matrix,
+                "share_matrix":     share_matrix,
                 "items_df":         items_df,
                 "cut_vars":         cut_vars,
                 "n_by_cut":         n_by_cut,
@@ -624,9 +629,26 @@ def api_hb_result():
             for col in cut_cols
         }
 
+    # Share of Preference (sum-to-100) — the "how much more important" metric,
+    # as opposed to importance_0_100's top-pinned-to-100 index.
+    cut_shares = r.get("cut_shares") or {}
+    total_share = cut_shares.get("Total")
+    shares_out = []
+    if total_share is not None and not total_share.empty:
+        shares_out = [
+            {
+                "item_id": int(row["item_id"]),
+                "label":   row["item_label"],
+                "share_pct": float(row["share_pct"]),
+                "rank":    int(row["rank"]),
+            }
+            for _, row in total_share.iterrows()
+        ]
+
     return jsonify({
         "success":          True,
         "scores":           scores_out,
+        "shares":           shares_out,
         "cuts":             cut_cols,
         "cuts_data":        cuts_data,
         "n_respondents":    int(r["n_respondents"]),
@@ -681,6 +703,8 @@ def download_excel_hb():
         cut_variables=r["cut_vars"],
         n_respondents_by_cut=r["n_by_cut"],
         method_label="Hierarchical Bayes (HB)",
+        share_results=r.get("cut_shares"),
+        share_matrix=r.get("share_matrix"),
     )
     return send_file(
         os.path.abspath(out_path),

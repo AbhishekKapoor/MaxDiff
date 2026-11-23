@@ -263,6 +263,94 @@ def hb_aggregate_scores(
     return df.sort_values("importance_0_100", ascending=False).reset_index(drop=True)
 
 
+def hb_share_of_preference(
+    raw_utilities: np.ndarray,
+    items_df: pd.DataFrame,
+    mask: Optional[np.ndarray] = None,
+) -> pd.DataFrame:
+    """
+    Share of Preference (Sawtooth's "sum-to-100" score): for each respondent,
+    softmax their utilities so their own 14 items sum to 100%, then average
+    those per-respondent probabilities across the group.
+
+    This is the correct way to say "how much more important" one item is
+    than another. hb_aggregate_scores() rescales the top item to exactly 100
+    and the bottom to 0 for charting — it is NOT a probability and the gaps
+    between items are not interpretable as relative magnitude (e.g. an item
+    at 50 is not "half as important" as the one at 100). Share of Preference
+    values sum to 100% across all items and ARE directly comparable that way
+    (an item at 14% really does account for 14% of total preference share).
+
+    Averaging per-respondent probabilities (rather than softmax-ing the
+    averaged utility) avoids Jensen's-inequality bias — this matches
+    Sawtooth's own methodology for HB share-of-preference reporting.
+
+    Parameters
+    ----------
+    raw_utilities : (n_resp, n_items) mean-centred posterior means
+    items_df      : DataFrame with item_id, item_label
+    mask          : optional boolean array to select a respondent subset (for cuts)
+    """
+    utils = raw_utilities[mask] if mask is not None else raw_utilities
+    if len(utils) == 0:
+        return pd.DataFrame()
+
+    # Per-respondent softmax (numerically stable), then average across respondents
+    u_shift   = utils - utils.max(axis=1, keepdims=True)
+    exp_u     = np.exp(u_shift)
+    indiv_pct = exp_u / exp_u.sum(axis=1, keepdims=True) * 100.0
+    share_pct = indiv_pct.mean(axis=0)
+
+    rows = [
+        {
+            "item_id":    int(items_df.iloc[j]["item_id"]),
+            "item_label": items_df.iloc[j]["item_label"],
+            "share_pct":  round(float(share_pct[j]), 1),
+        }
+        for j in range(len(items_df))
+    ]
+    df = pd.DataFrame(rows)
+    df["rank"] = df["share_pct"].rank(ascending=False, method="min").astype(int)
+    return df.sort_values("share_pct", ascending=False).reset_index(drop=True)
+
+
+def hb_cut_shares(
+    raw_utilities: np.ndarray,
+    responses_df: pd.DataFrame,
+    items_df: pd.DataFrame,
+    respondent_ids: list,
+    cut_variables: List[str],
+) -> Dict[str, pd.DataFrame]:
+    """Share-of-preference version of hb_cut_scores() — see hb_share_of_preference()."""
+    resp_row = {rid: i for i, rid in enumerate(respondent_ids)}
+
+    resp_cuts = (
+        responses_df[["respondent_id"] + [c for c in cut_variables if c in responses_df.columns]]
+        .drop_duplicates("respondent_id")
+        .set_index("respondent_id")
+    )
+
+    results: Dict[str, pd.DataFrame] = {}
+    results["Total"] = hb_share_of_preference(raw_utilities, items_df)
+
+    for var in cut_variables:
+        if var not in resp_cuts.columns:
+            continue
+        for val in sorted(resp_cuts[var].dropna().unique()):
+            rids_in_cut = resp_cuts.index[resp_cuts[var] == val].tolist()
+            idxs = np.array([resp_row[r] for r in rids_in_cut if r in resp_row])
+            if len(idxs) < 5:
+                continue
+            mask = np.zeros(len(respondent_ids), dtype=bool)
+            mask[idxs] = True
+            label = f"{var}_{val}"
+            df    = hb_share_of_preference(raw_utilities, items_df, mask=mask)
+            if not df.empty:
+                results[label] = df
+
+    return results
+
+
 def hb_cut_scores(
     raw_utilities: np.ndarray,
     responses_df: pd.DataFrame,

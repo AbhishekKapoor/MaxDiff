@@ -506,6 +506,134 @@ def _write_importance_cuts(ws, importance_matrix, items_df, cut_variables, n_res
 
 
 # ---------------------------------------------------------------------------
+# Sheet: Share of Preference (sum-to-100 — for picking which driver to act on)
+# ---------------------------------------------------------------------------
+
+def _write_share_of_preference(ws, share_df, n_respondents, method_label):
+    ws.sheet_view.showGridLines = False
+    scores = share_df.sort_values("share_pct", ascending=False).reset_index(drop=True)
+    n = len(scores)
+
+    _header_style(ws, 1, 1, 4,
+                  f"SHARE OF PREFERENCE — TOTAL SAMPLE  "
+                  f"(n={n_respondents:,} respondents, method={method_label})",
+                  bg="header_dark", size=12)
+    ws.row_dimensions[1].height = 28
+
+    _header_style(ws, 2, 1, 4,
+                  "Each item's % share of total preference across all items — these sum to 100%. "
+                  "Unlike the 0–100 Importance scale (which just pins the top item to 100), "
+                  "this IS the actual relative weight: an item at 14% genuinely carries about "
+                  "1.5× the weight of one at 9%, and is a fair basis for picking which drivers "
+                  "to act on.",
+                  bg="header_light", fg="1A1A2E", size=9, merge=True)
+    ws.row_dimensions[2].height = 32
+
+    col_headers = ["Rank", "Item", "Share of Preference (%)"]
+    for col, h in enumerate(col_headers, 1):
+        c = ws.cell(row=3, column=col, value=h)
+        c.fill = _fill(COLOURS["header_mid"])
+        c.font = _font(bold=True, size=10, colour="FFFFFF")
+        c.alignment = Alignment(horizontal="center")
+        c.border = _border()
+    ws.row_dimensions[3].height = 20
+
+    for i, (_, row) in enumerate(scores.iterrows()):
+        r = i + 4
+        bg = COLOURS["white"] if i % 2 == 0 else COLOURS["row_alt"]
+        vals = [int(row["rank"]), row["item_label"], round(float(row["share_pct"]), 1)]
+        aligns = ["center", "left", "center"]
+        for col, (val, align) in enumerate(zip(vals, aligns), 1):
+            c = ws.cell(row=r, column=col, value=val)
+            c.fill = _fill(bg)
+            c.font = _font(size=10, bold=(col == 1))
+            c.alignment = Alignment(horizontal=align)
+            c.border = _border()
+
+    # Footer: sanity-check total
+    total_row = 4 + n + 1
+    c = ws.cell(row=total_row, column=2, value="TOTAL (should be 100%)")
+    c.font = _font(bold=True, italic=True, size=9, colour="808080")
+    c2 = ws.cell(row=total_row, column=3, value=round(float(scores["share_pct"].sum()), 1))
+    c2.font = _font(bold=True, italic=True, size=9, colour="808080")
+    c2.alignment = Alignment(horizontal="center")
+
+    chart_start_row = 4
+    items_ref = Reference(ws, min_col=2, min_row=chart_start_row, max_row=chart_start_row + n - 1)
+    data_ref = Reference(ws, min_col=3, min_row=chart_start_row, max_row=chart_start_row + n - 1)
+    chart = BarChart()
+    chart.type = "bar"
+    chart.grouping = "clustered"
+    chart.title = "Share of Preference — Total Sample"
+    chart.y_axis.title = "Item"
+    chart.x_axis.title = "Share of Preference (%)"
+    chart.add_data(data_ref)
+    chart.set_categories(items_ref)
+    chart.series[0].graphicalProperties.solidFill = COLOURS["bar_orange"]
+    chart.series[0].graphicalProperties.line.solidFill = COLOURS["bar_orange"]
+    chart.shape = 4
+    chart.width = 20
+    chart.height = max(10, n * 0.6)
+    ws.add_chart(chart, "F3")
+
+    ws.column_dimensions["A"].width = 7
+    ws.column_dimensions["B"].width = 36
+    ws.column_dimensions["C"].width = 22
+
+
+def _write_share_cuts(ws, share_matrix, items_df, cut_variables, n_respondents_by_cut):
+    ws.sheet_view.showGridLines = False
+    cols = list(share_matrix.columns)
+    n_items = len(share_matrix)
+
+    _header_style(ws, 1, 1, len(cols),
+                  "SHARE OF PREFERENCE BY DEMOGRAPHIC CUTS (sums to 100% within each column)",
+                  bg="header_dark", size=12)
+    ws.row_dimensions[1].height = 28
+
+    for col, header in enumerate(cols, 1):
+        n = n_respondents_by_cut.get(header, "")
+        display = header.replace("_", " ").title()
+        if n:
+            display += f"\n(n={n:,})"
+        c = ws.cell(row=2, column=col, value=display)
+        c.fill = _fill(COLOURS["header_mid"])
+        c.font = _font(bold=True, size=10, colour="FFFFFF")
+        c.alignment = Alignment(horizontal="center", wrap_text=True)
+        c.border = _border()
+    ws.row_dimensions[2].height = 30
+
+    for r_idx, (_, row) in enumerate(share_matrix.iterrows()):
+        r = r_idx + 3
+        bg = COLOURS["white"] if r_idx % 2 == 0 else COLOURS["row_alt"]
+        for col, val in enumerate(row, 1):
+            c = ws.cell(row=r, column=col, value=val)
+            c.fill = _fill(bg)
+            c.alignment = Alignment(horizontal="center" if col > 2 else "left")
+            c.border = _border()
+            if col == 1:
+                c.font = _font(bold=True, size=10)
+            elif col == 2:
+                c.font = _font(size=10)
+            else:
+                try:
+                    v = float(val)
+                    if v >= 12:
+                        c.fill = _fill("C6EFCE")
+                    elif v >= 6:
+                        c.fill = _fill("FFEB9C")
+                    else:
+                        c.fill = _fill("FFC7CE")
+                    c.font = _font(size=10, bold=(col == 3))
+                except Exception:
+                    pass
+
+    _auto_width(ws)
+    ws.column_dimensions["A"].width = 8
+    ws.column_dimensions["B"].width = 32
+
+
+# ---------------------------------------------------------------------------
 # Sheet 6: Simulator
 # ---------------------------------------------------------------------------
 
@@ -767,6 +895,8 @@ def build_workbook(
     cut_variables: List[str],
     n_respondents_by_cut: Dict[str, int],
     method_label: str = "Counts",
+    share_results: Optional[Dict[str, pd.DataFrame]] = None,
+    share_matrix: Optional[pd.DataFrame] = None,
 ) -> None:
     """
     Build the complete MaxDiff Excel workbook.
@@ -783,6 +913,15 @@ def build_workbook(
     cut_variables        : List of demographic variable names
     n_respondents_by_cut : Dict {cut_label: n}
     method_label         : 'Counts' or 'Logit'
+    share_results        : optional Dict of {cut_label: share_df} with a "share_pct"
+                            column summing to 100 (e.g. from hb.hb_cut_shares()).
+                            When given, adds a "Share_of_Preference" sheet — the
+                            right metric for "which driver matters, and by how much",
+                            as opposed to the 0-100 scale's top-pinned-to-100 index.
+    share_matrix         : wide matrix version of share_results across cuts
+                            (e.g. from analysis.build_importance_matrix() applied
+                            to share_pct instead of importance_0_100). Required
+                            together with share_results to render the cuts table.
     """
     wb = Workbook()
     wb.remove(wb.active)  # remove default sheet
@@ -823,6 +962,20 @@ def build_workbook(
     ws_sim = wb.create_sheet("Simulator")
     ws_sim.sheet_properties.tabColor = COLOURS["accent_orange"]
     _write_simulator(ws_sim, importance_matrix, items_df, n_respondents_by_cut)
+
+    # 7 & 8. Share of Preference (sum-to-100) — only when provided (currently HB only)
+    if share_results is not None:
+        total_share = share_results.get("Total", pd.DataFrame())
+        ws_share_tot = wb.create_sheet("Share_of_Preference")
+        ws_share_tot.sheet_properties.tabColor = COLOURS["bar_orange"]
+        if not total_share.empty:
+            _write_share_of_preference(ws_share_tot, total_share, n_total, method_label)
+
+        if share_matrix is not None:
+            ws_share_cuts = wb.create_sheet("Share_of_Preference_Cuts")
+            ws_share_cuts.sheet_properties.tabColor = COLOURS["bar_orange"]
+            _write_share_cuts(ws_share_cuts, share_matrix, items_df,
+                               cut_variables, n_respondents_by_cut)
 
     wb.save(output_path)
     print(f"✓  Workbook saved: {output_path}")

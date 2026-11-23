@@ -325,14 +325,19 @@ def score_all_cuts(
 def build_importance_matrix(
     cut_results: Dict[str, pd.DataFrame],
     items_df: pd.DataFrame,
+    value_col: str = "importance_0_100",
 ) -> pd.DataFrame:
     """
     Build a wide-format importance matrix: items as rows, cuts as columns.
 
     Parameters
     ----------
-    cut_results : Output from score_all_cuts()
+    cut_results : Output from score_all_cuts() (or hb.hb_cut_shares() when
+                  value_col="share_pct")
     items_df    : DataFrame with [item_id, item_label]
+    value_col   : which column to pull from each cut's scores_df — the 0-100
+                  rescaled "importance_0_100" (default) or the sum-to-100
+                  "share_pct" from hb.hb_share_of_preference()/hb_cut_shares()
 
     Returns
     -------
@@ -346,7 +351,7 @@ def build_importance_matrix(
     for cut_label, scores_df in cut_results.items():
         if scores_df.empty:
             continue
-        col_data = scores_df.set_index("item_id")["importance_0_100"]
+        col_data = scores_df.set_index("item_id")[value_col]
         matrix[cut_label] = matrix["item_id"].map(col_data)
 
     # Sort by Total importance descending
